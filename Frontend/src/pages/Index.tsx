@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { useNavigate } from "react-router-dom";
 import { Video, Brain, FileText, Users, ArrowRight, Twitter, Linkedin, Mail } from "lucide-react";
 import AnimatedHero from "@/components/AnimatedHero";
+import DashboardPreview from "@/components/DashboardPreview";
 import WelcomeBookAnimation from "@/components/WelcomeBookAnimation";
 import AnimatedSteps from "@/components/AnimatedSteps";
 import { ThemeToggle } from "@/components/ThemeToggle";
@@ -103,6 +104,9 @@ const Index = () => {
       <div ref={heroRef}>
         <AnimatedHero />
       </div>
+
+      {/* Dashboard Preview Section */}
+      <DashboardPreview />
 
       {/* Features Section */}
       <section className="py-20 bg-background">

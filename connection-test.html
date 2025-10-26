@@ -1,0 +1,384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend-Backend Connection Test</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 900px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            border-bottom: 3px solid #4CAF50;
+            padding-bottom: 10px;
+        }
+        .test-section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        .status {
+            display: inline-block;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        .status.success {
+            background: #4CAF50;
+            color: white;
+        }
+        .status.error {
+            background: #f44336;
+            color: white;
+        }
+        .status.pending {
+            background: #FFC107;
+            color: black;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        .response {
+            background: #f9f9f9;
+            border-left: 4px solid #4CAF50;
+            padding: 15px;
+            margin-top: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            white-space: pre-wrap;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .error-response {
+            border-left-color: #f44336;
+        }
+        .credentials {
+            background: #e3f2fd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+        }
+        input {
+            padding: 8px;
+            margin: 5px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            width: 250px;
+        }
+        .info {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 4px solid #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔗 TherapyHub - Frontend-Backend Connection Test</h1>
+        
+        <div class="info">
+            <strong>Prerequisites:</strong><br>
+            1. Backend server running at <code>http://localhost:5000</code><br>
+            2. MongoDB running and seeded with test data<br>
+            3. Run this file from your frontend directory or use a local server
+        </div>
+
+        <div class="test-section">
+            <h2>1. Backend Health Check
+                <span id="health-status" class="status pending">Not Tested</span>
+            </h2>
+            <button onclick="testHealth()">Test Connection</button>
+            <div id="health-response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>2. Authentication Test
+                <span id="auth-status" class="status pending">Not Tested</span>
+            </h2>
+            <div class="credentials">
+                <strong>Test Credentials:</strong><br>
+                <input type="email" id="email" value="therapist@example.com" placeholder="Email">
+                <input type="password" id="password" value="password123" placeholder="Password">
+            </div>
+            <button onclick="testLogin()">Test Login</button>
+            <button onclick="testGetUser()" id="getUserBtn" disabled>Get Current User</button>
+            <div id="auth-response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>3. Client API Test
+                <span id="client-status" class="status pending">Not Tested</span>
+            </h2>
+            <button onclick="testGetClients()" id="getClientsBtn" disabled>Get All Clients</button>
+            <div id="client-response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>4. Session API Test
+                <span id="session-status" class="status pending">Not Tested</span>
+            </h2>
+            <button onclick="testGetSessions()" id="getSessionsBtn" disabled>Get All Sessions</button>
+            <div id="session-response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>5. Notes API Test
+                <span id="notes-status" class="status pending">Not Tested</span>
+            </h2>
+            <button onclick="testGetNotes()" id="getNotesBtn" disabled>Get All Notes</button>
+            <div id="notes-response"></div>
+        </div>
+
+        <div class="test-section">
+            <h2>6. AI Mock Analysis Test
+                <span id="ai-status" class="status pending">Not Tested</span>
+            </h2>
+            <button onclick="testMockAI()" id="getMockAIBtn" disabled>Test Mock AI Analysis</button>
+            <div id="ai-response"></div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE_URL = 'http://localhost:5000/api';
+        let accessToken = null;
+
+        function updateStatus(elementId, success, message = '') {
+            const statusElement = document.getElementById(elementId);
+            statusElement.className = 'status ' + (success ? 'success' : 'error');
+            statusElement.textContent = success ? '✓ Success' : '✗ Failed';
+            if (message) {
+                statusElement.textContent += ` - ${message}`;
+            }
+        }
+
+        function displayResponse(elementId, data, isError = false) {
+            const responseDiv = document.getElementById(elementId);
+            responseDiv.innerHTML = `<div class="response ${isError ? 'error-response' : ''}">
+                ${JSON.stringify(data, null, 2)}
+            </div>`;
+        }
+
+        async function testHealth() {
+            try {
+                const response = await fetch(`${API_BASE_URL}/health`);
+                const data = await response.json();
+                
+                if (response.ok && data.status === 'healthy') {
+                    updateStatus('health-status', true);
+                    displayResponse('health-response', data);
+                } else {
+                    updateStatus('health-status', false, 'Backend not healthy');
+                    displayResponse('health-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('health-status', false, 'Connection failed');
+                displayResponse('health-response', { error: error.message }, true);
+            }
+        }
+
+        async function testLogin() {
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok && data.access_token) {
+                    accessToken = data.access_token;
+                    updateStatus('auth-status', true, 'Logged in');
+                    displayResponse('auth-response', {
+                        message: data.message,
+                        user: data.user,
+                        token_received: true
+                    });
+                    
+                    // Enable other test buttons
+                    document.getElementById('getUserBtn').disabled = false;
+                    document.getElementById('getClientsBtn').disabled = false;
+                    document.getElementById('getSessionsBtn').disabled = false;
+                    document.getElementById('getNotesBtn').disabled = false;
+                    document.getElementById('getMockAIBtn').disabled = false;
+                } else {
+                    updateStatus('auth-status', false, data.error || 'Login failed');
+                    displayResponse('auth-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('auth-status', false, 'Request failed');
+                displayResponse('auth-response', { error: error.message }, true);
+            }
+        }
+
+        async function testGetUser() {
+            if (!accessToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/me`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    displayResponse('auth-response', data);
+                } else {
+                    displayResponse('auth-response', data, true);
+                }
+            } catch (error) {
+                displayResponse('auth-response', { error: error.message }, true);
+            }
+        }
+
+        async function testGetClients() {
+            if (!accessToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/clients`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('client-status', true, `${data.clients.length} clients found`);
+                    displayResponse('client-response', data);
+                } else {
+                    updateStatus('client-status', false);
+                    displayResponse('client-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('client-status', false);
+                displayResponse('client-response', { error: error.message }, true);
+            }
+        }
+
+        async function testGetSessions() {
+            if (!accessToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/sessions`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('session-status', true, `${data.sessions.length} sessions found`);
+                    displayResponse('session-response', data);
+                } else {
+                    updateStatus('session-status', false);
+                    displayResponse('session-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('session-status', false);
+                displayResponse('session-response', { error: error.message }, true);
+            }
+        }
+
+        async function testGetNotes() {
+            if (!accessToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/notes`, {
+                    headers: { 'Authorization': `Bearer ${accessToken}` }
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('notes-status', true, `${data.notes.length} notes found`);
+                    displayResponse('notes-response', data);
+                } else {
+                    updateStatus('notes-status', false);
+                    displayResponse('notes-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('notes-status', false);
+                displayResponse('notes-response', { error: error.message }, true);
+            }
+        }
+
+        async function testMockAI() {
+            if (!accessToken) {
+                alert('Please login first');
+                return;
+            }
+
+            try {
+                const response = await fetch(`${API_BASE_URL}/ai/analyze/mock`, {
+                    method: 'POST',
+                    headers: { 
+                        'Authorization': `Bearer ${accessToken}`,
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ text: "Test analysis" })
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    updateStatus('ai-status', true);
+                    displayResponse('ai-response', data);
+                } else {
+                    updateStatus('ai-status', false);
+                    displayResponse('ai-response', data, true);
+                }
+            } catch (error) {
+                updateStatus('ai-status', false);
+                displayResponse('ai-response', { error: error.message }, true);
+            }
+        }
+
+        // Auto-test health on page load
+        window.addEventListener('load', () => {
+            setTimeout(testHealth, 500);
+        });
+    </script>
+</body>
+</html>

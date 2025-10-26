@@ -3,6 +3,7 @@ import { Card } from "@/components/ui/card";
 import { ArrowRight, Brain, Video, Sparkles, User, Activity, FileText, Zap } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useEffect, useState } from "react";
+import { BeamsBackground } from "./BeamsBackground";
 
 const AnimatedHero = () => {
   const navigate = useNavigate();
@@ -13,13 +14,9 @@ const AnimatedHero = () => {
   }, []);
 
   return (
-    <section className="relative py-20 md:py-32 overflow-hidden bg-gradient-to-b from-muted/30 to-background">
-      {/* Animated background elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-primary/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-accent/10 rounded-full blur-3xl animate-pulse delay-1000" />
-        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse delay-500" />
-      </div>
+    <section className="relative py-20 md:py-32 pb-32 overflow-hidden bg-gradient-to-b from-muted/30 via-background to-background">
+      {/* Beams Background Effect */}
+      <BeamsBackground />
 
       <div className="container mx-auto px-6 relative z-10">
         <div className="grid md:grid-cols-2 gap-12 items-center">
@@ -108,8 +105,8 @@ const AnimatedHero = () => {
               isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-8"
             }`}
           >
-            {/* Floating animation wrapper */}
-            <div className="relative animate-float">
+            {/* Static wrapper - no floating animation */}
+            <div className="relative">
               {/* Desktop/Laptop Frame */}
               <div className="relative bg-gradient-to-b from-slate-800 to-slate-900 dark:from-slate-900 dark:to-black rounded-2xl shadow-2xl border-4 border-slate-700 dark:border-slate-800 p-3">
                 {/* Browser-like window chrome */}
@@ -296,6 +293,15 @@ const AnimatedHero = () => {
           }
         }
 
+        @keyframes subtle-pulse {
+          0%, 100% {
+            opacity: 1;
+          }
+          50% {
+            opacity: 0.85;
+          }
+        }
+
         .animate-float {
           animation: float 6s ease-in-out infinite;
         }
@@ -315,6 +321,10 @@ const AnimatedHero = () => {
 
         .animate-scan {
           animation: scan 2s ease-in-out infinite;
+        }
+
+        .animate-subtle-pulse {
+          animation: subtle-pulse 4s ease-in-out infinite;
         }
 
         .delay-500 {
