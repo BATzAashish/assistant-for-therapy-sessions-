@@ -59,12 +59,12 @@ const Register = () => {
     setLoading(true);
 
     try {
-      await authAPI.register(
-        formData.email,
-        formData.password,
-        formData.fullName,
-        formData.username
-      );
+      await authAPI.register({
+        email: formData.email,
+        username: formData.username,
+        password: formData.password,
+        full_name: formData.fullName,
+      });
 
       toast({
         title: "Registration successful!",

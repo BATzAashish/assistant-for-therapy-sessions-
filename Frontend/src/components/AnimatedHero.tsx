@@ -82,7 +82,7 @@ const AnimatedHero = () => {
             >
               <Button
                 size="lg"
-                onClick={() => navigate("/login")}
+                onClick={() => navigate("/register")}
                 className="text-lg group hover:scale-105 transition-transform"
               >
                 Get Started Free

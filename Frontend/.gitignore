@@ -1,0 +1,129 @@
+# ===========================
+# Environment Variables
+# ===========================
+.env
+.env.*
+!.env.example
+*.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# ===========================
+# Dependencies
+# ===========================
+node_modules/
+jspm_packages/
+bower_components/
+
+# ===========================
+# Logs
+# ===========================
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+*.log
+
+# ===========================
+# Build Outputs
+# ===========================
+dist/
+dist-ssr/
+build/
+out/
+.next/
+.nuxt/
+.output/
+.cache/
+
+# ===========================
+# Vite
+# ===========================
+*.local
+.vite/
+vite.config.*.timestamp-*
+
+# ===========================
+# Package Managers
+# ===========================
+# Bun (keep lockfile for this project)
+.bun/
+
+# Uncomment if not using specific package manager
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# ===========================
+# Testing
+# ===========================
+coverage/
+.nyc_output/
+*.lcov
+.jest/
+test-results/
+playwright-report/
+
+# ===========================
+# IDEs / Editors
+# ===========================
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*.swn
+*.bak
+*.sublime-workspace
+*.sublime-project
+
+# ===========================
+# Operating Systems
+# ===========================
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+*~
+.directory
+
+# ===========================
+# Temporary Files
+# ===========================
+*.tmp
+*.temp
+*.swp
+*.pid
+*.seed
+*.pid.lock
+
+# ===========================
+# TypeScript
+# ===========================
+*.tsbuildinfo
+.tsbuildinfo
+
+# ===========================
+# Misc
+# ===========================
+.eslintcache
+.stylelintcache
+.sass-cache/
+*.orig
+*.rej
+.vercel
+.netlify
+.turbo

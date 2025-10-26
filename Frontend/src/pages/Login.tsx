@@ -3,14 +3,14 @@ import { useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Activity, Loader2, Brain, Sparkles, Lock, Mail } from "lucide-react";
+import { Activity, Loader2, Brain, Sparkles, Lock, Mail, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { authAPI } from "@/lib/api";
 
 const Login = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [email, setEmail] = useState("");
+  const [usernameOrEmail, setUsernameOrEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [focusedInput, setFocusedInput] = useState<string | null>(null);
@@ -20,7 +20,7 @@ const Login = () => {
     setLoading(true);
 
     try {
-      const data = await authAPI.login(email, password);
+      const data = await authAPI.login(usernameOrEmail, password);
       
       toast({
         title: "Login successful",
@@ -31,7 +31,7 @@ const Login = () => {
     } catch (error: any) {
       toast({
         title: "Login failed",
-        description: error.message || "Invalid email or password",
+        description: error.message || "Invalid credentials",
         variant: "destructive",
       });
     } finally {
@@ -67,30 +67,30 @@ const Login = () => {
         {/* Login card with glass morphism effect */}
         <div className="backdrop-blur-xl bg-white/70 dark:bg-slate-900/70 border border-white/20 dark:border-slate-800/50 rounded-3xl shadow-2xl shadow-blue-500/10 dark:shadow-blue-500/5 p-8 animate-in fade-in slide-in-from-bottom duration-700 delay-200">
           <form onSubmit={handleLogin} className="space-y-6">
-            {/* Email input with animation */}
+            {/* Username or Email input with animation */}
             <div className="space-y-2 animate-in fade-in slide-in-from-left duration-500 delay-300">
               <Label 
-                htmlFor="email" 
+                htmlFor="usernameOrEmail" 
                 className="text-sm font-medium text-slate-700 dark:text-slate-300 flex items-center gap-2"
               >
-                <Mail className="h-4 w-4" />
-                Email Address
+                <User className="h-4 w-4" />
+                Username or Email
               </Label>
               <div className="relative group">
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="therapist@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  onFocus={() => setFocusedInput("email")}
+                  id="usernameOrEmail"
+                  type="text"
+                  placeholder="username or email@example.com"
+                  value={usernameOrEmail}
+                  onChange={(e) => setUsernameOrEmail(e.target.value)}
+                  onFocus={() => setFocusedInput("usernameOrEmail")}
                   onBlur={() => setFocusedInput(null)}
                   required
                   disabled={loading}
                   className={`
                     w-full h-12 px-4 rounded-xl border-2 transition-all duration-300
                     bg-white/50 dark:bg-slate-800/50
-                    ${focusedInput === "email" 
+                    ${focusedInput === "usernameOrEmail" 
                       ? "border-blue-500 shadow-lg shadow-blue-500/20 dark:shadow-blue-500/10 scale-[1.02]" 
                       : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
                     }

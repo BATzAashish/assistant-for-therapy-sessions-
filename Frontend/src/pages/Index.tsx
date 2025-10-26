@@ -94,7 +94,7 @@ const Index = () => {
           </div>
           <div className="flex items-center space-x-4">
             <Button variant="ghost" onClick={() => navigate("/login")}>Login</Button>
-            <Button onClick={() => navigate("/login")}>Sign Up</Button>
+            <Button onClick={() => navigate("/register")}>Sign Up</Button>
             <ThemeToggle />
           </div>
         </div>
@@ -161,7 +161,7 @@ const Index = () => {
             Join hundreds of therapists who are already using TherapyHub to provide better care.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" variant="secondary" onClick={() => navigate("/login")} className="text-lg">
+            <Button size="lg" variant="secondary" onClick={() => navigate("/register")} className="text-lg">
               Start Free Trial
               <ArrowRight className="ml-2" />
             </Button>
