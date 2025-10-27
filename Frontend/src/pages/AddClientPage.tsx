@@ -40,8 +40,14 @@ const AddClientPage = () => {
   });
 
   useEffect(() => {
+    // Check if user is authenticated before fetching
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
     fetchUser();
-  }, []);
+  }, [navigate]);
 
   const fetchUser = async () => {
     try {
@@ -49,6 +55,7 @@ const AddClientPage = () => {
       setUser(userData.user);
     } catch (error) {
       console.error("Error fetching user:", error);
+      navigate('/login');
     }
   };
 

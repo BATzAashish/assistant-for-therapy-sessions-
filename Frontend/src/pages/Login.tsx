@@ -22,6 +22,10 @@ const Login = () => {
     try {
       const data = await authAPI.login(usernameOrEmail, password);
       
+      // Store token and user data
+      localStorage.setItem('token', data.access_token);
+      localStorage.setItem('user', JSON.stringify(data.user));
+      
       toast({
         title: "Login successful",
         description: `Welcome back, ${data.user.full_name}!`,

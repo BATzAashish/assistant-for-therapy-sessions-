@@ -14,6 +14,7 @@ import CalendarPage from "./pages/CalendarPage";
 import AddClientPage from "./pages/AddClientPage";
 import SessionPage from "./pages/SessionPage";
 import NotesPage from "./pages/NotesPage";
+import VideoSessionPage from "./pages/VideoSessionPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -34,6 +35,7 @@ const App = () => (
             <Route path="/dashboard/calendar" element={<CalendarPage />} />
             <Route path="/dashboard/add-client" element={<AddClientPage />} />
             <Route path="/dashboard/sessions" element={<SessionPage />} />
+            <Route path="/dashboard/sessions/:sessionId/video" element={<VideoSessionPage />} />
             <Route path="/dashboard/notes" element={<NotesPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

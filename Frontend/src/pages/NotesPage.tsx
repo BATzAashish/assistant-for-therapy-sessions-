@@ -172,22 +172,26 @@ const NotesPage = () => {
 
   const handleCreateNote = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.client_id || !formData.session_id || !formData.content) {
+    if (!formData.client_id || !formData.content) {
       toast({
         title: "Error",
-        description: "Please fill in all required fields",
+        description: "Please select a client and enter note content",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const noteData = {
+      const noteData: any = {
         client_id: formData.client_id,
-        session_id: formData.session_id,
         content: formData.content,
         note_type: formData.note_type,
       };
+      
+      // Only include session_id if it's selected
+      if (formData.session_id) {
+        noteData.session_id = formData.session_id;
+      }
 
       await notesAPI.create(noteData);
       toast({

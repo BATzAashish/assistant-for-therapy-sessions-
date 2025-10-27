@@ -38,8 +38,14 @@ const ClientsPage = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Check if user is authenticated before fetching
+    const token = localStorage.getItem('token');
+    if (!token) {
+      navigate('/login');
+      return;
+    }
     fetchData();
-  }, []);
+  }, [navigate]);
 
   useEffect(() => {
     // Filter clients based on search query
@@ -68,6 +74,7 @@ const ClientsPage = () => {
         description: error.message || "Failed to load clients",
         variant: "destructive",
       });
+      navigate('/login');
     } finally {
       setLoading(false);
     }
