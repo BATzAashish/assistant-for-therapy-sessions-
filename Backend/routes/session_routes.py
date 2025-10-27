@@ -7,6 +7,12 @@ from bson.objectid import ObjectId
 
 session_bp = Blueprint('sessions', __name__)
 
+@session_bp.route('/test', methods=['POST'])
+def test_post():
+    """Test POST endpoint"""
+    print("🟢 TEST POST ROUTE HIT!")
+    return jsonify({'message': 'Test successful'}), 200
+
 @session_bp.route('/', methods=['GET'])
 @jwt_required()
 def get_sessions():
@@ -29,7 +35,7 @@ def get_sessions():
         sessions = session_model.find_by_therapist(current_user_id, status, start_date, end_date)
         
         return jsonify({
-            'sessions': [session_model.to_dict(session) for session in sessions]
+            'sessions': [session_model.to_dict(session, populate_client=True) for session in sessions]
         }), 200
         
     except Exception as e:
@@ -53,7 +59,7 @@ def get_session(session_id):
             return jsonify({'error': 'Unauthorized'}), 403
         
         return jsonify({
-            'session': session_model.to_dict(session)
+            'session': session_model.to_dict(session, populate_client=True)
         }), 200
         
     except Exception as e:
@@ -81,7 +87,7 @@ def get_client_sessions(client_id):
         sessions = session_model.find_by_client(client_id, limit)
         
         return jsonify({
-            'sessions': [session_model.to_dict(session) for session in sessions]
+            'sessions': [session_model.to_dict(session, populate_client=True) for session in sessions]
         }), 200
         
     except Exception as e:
@@ -91,20 +97,31 @@ def get_client_sessions(client_id):
 @jwt_required()
 def create_session():
     """Create a new session"""
+    print("🔵 create_session called!")
     try:
         current_user_id = get_jwt_identity()
         data = request.get_json()
+        print(f"🔵 User: {current_user_id}, Data: {data}")
+        print(f"🔵 client_id type: {type(data.get('client_id'))}, value: {repr(data.get('client_id'))}")
         
         # Validate required fields
         required_fields = ['client_id', 'scheduled_date']
         if not all(field in data for field in required_fields):
+            print(f"🔴 Missing fields! Data keys: {data.keys() if data else 'None'}")
             return jsonify({'error': 'Missing required fields'}), 400
         
         # Verify client belongs to therapist
         client_model = Client(current_app.db)
-        client = client_model.find_by_id(data['client_id'])
         
+        # Try to find by ID first
+        client = client_model.find_by_id(data['client_id'])
+        print(f"🔵 Client found by ID: {client is not None}")
+        
+        # If not found, let's check all clients for this therapist
         if not client:
+            all_clients = list(client_model.collection.find({'therapist_id': ObjectId(current_user_id)}))
+            print(f"🔵 All clients for therapist: {[(str(c['_id']), c.get('name')) for c in all_clients]}")
+            print(f"🔴 Client not found: {data['client_id']}")
             return jsonify({'error': 'Client not found'}), 404
         
         if str(client['therapist_id']) != current_user_id:
@@ -122,14 +139,16 @@ def create_session():
             scheduled_date=scheduled_date,
             duration=data.get('duration', 60),
             session_type=data.get('session_type', 'individual'),
-            status=data.get('status', 'scheduled')
+            status=data.get('status', 'scheduled'),
+            location=data.get('location'),
+            meeting_link=data.get('meeting_link')
         )
         
         session = session_model.find_by_id(session_id)
         
         return jsonify({
             'message': 'Session created successfully',
-            'session': session_model.to_dict(session)
+            'session': session_model.to_dict(session, populate_client=True)
         }), 201
         
     except Exception as e:
@@ -261,10 +280,37 @@ def cancel_session(session_id):
             updated_session = session_model.find_by_id(session_id)
             return jsonify({
                 'message': 'Session cancelled successfully',
-                'session': session_model.to_dict(updated_session)
+                'session': session_model.to_dict(updated_session, populate_client=True)
             }), 200
         else:
             return jsonify({'error': 'Failed to cancel session'}), 500
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@session_bp.route('/<session_id>', methods=['DELETE'])
+@jwt_required()
+def delete_session(session_id):
+    """Delete a session"""
+    try:
+        current_user_id = get_jwt_identity()
+        session_model = Session(current_app.db)
+        
+        session = session_model.find_by_id(session_id)
+        
+        if not session:
+            return jsonify({'error': 'Session not found'}), 404
+        
+        # Verify the session belongs to the current therapist
+        if str(session['therapist_id']) != current_user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        if session_model.delete_session(session_id):
+            return jsonify({
+                'message': 'Session deleted successfully'
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to delete session'}), 500
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500

@@ -57,17 +57,22 @@ def login():
         data = request.get_json()
         
         # Validate required fields
-        if not data.get('email') or not data.get('password'):
-            return jsonify({'error': 'Email and password are required'}), 400
+        identifier = data.get('email') or data.get('username')
+        password = data.get('password')
+        
+        if not identifier or not password:
+            return jsonify({'error': 'Username/email and password are required'}), 400
         
         user_model = User(current_app.db)
         
-        # Find user
-        user = user_model.find_by_email(data['email'])
+        # Find user by email or username
+        user = user_model.find_by_email(identifier)
+        if not user:
+            user = user_model.find_by_username(identifier)
         
         # Verify password
-        if not user or not user_model.verify_password(user, data['password']):
-            return jsonify({'error': 'Invalid email or password'}), 401
+        if not user or not user_model.verify_password(user, password):
+            return jsonify({'error': 'Invalid credentials'}), 401
         
         # Check if user is active
         if not user.get('is_active', True):

@@ -18,7 +18,7 @@ def get_notes():
         notes = note_model.find_by_therapist(current_user_id, limit)
         
         return jsonify({
-            'notes': [note_model.to_dict(note) for note in notes]
+            'notes': [note_model.to_dict(note, populate_refs=True) for note in notes]
         }), 200
         
     except Exception as e:
@@ -42,7 +42,7 @@ def get_note(note_id):
             return jsonify({'error': 'Unauthorized'}), 403
         
         return jsonify({
-            'note': note_model.to_dict(note)
+            'note': note_model.to_dict(note, populate_refs=True)
         }), 200
         
     except Exception as e:
@@ -69,7 +69,7 @@ def get_session_notes(session_id):
         notes = note_model.find_by_session(session_id)
         
         return jsonify({
-            'notes': [note_model.to_dict(note) for note in notes]
+            'notes': [note_model.to_dict(note, populate_refs=True) for note in notes]
         }), 200
         
     except Exception as e:
@@ -97,7 +97,7 @@ def get_client_notes(client_id):
         notes = note_model.find_by_client(client_id, limit)
         
         return jsonify({
-            'notes': [note_model.to_dict(note) for note in notes]
+            'notes': [note_model.to_dict(note, populate_refs=True) for note in notes]
         }), 200
         
     except Exception as e:
@@ -152,7 +152,7 @@ def create_note():
         
         return jsonify({
             'message': 'Note created successfully',
-            'note': note_model.to_dict(note)
+            'note': note_model.to_dict(note, populate_refs=True)
         }), 201
         
     except Exception as e:
@@ -183,7 +183,7 @@ def update_note(note_id):
             updated_note = note_model.find_by_id(note_id)
             return jsonify({
                 'message': 'Note updated successfully',
-                'note': note_model.to_dict(updated_note)
+                'note': note_model.to_dict(updated_note, populate_refs=True)
             }), 200
         else:
             return jsonify({'error': 'Failed to update note'}), 500

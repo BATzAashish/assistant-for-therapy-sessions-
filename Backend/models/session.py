@@ -5,6 +5,7 @@ class Session:
     """Session model for therapy sessions"""
     
     def __init__(self, db):
+        self.db = db
         self.collection = db.sessions
         self._create_indexes()
     
@@ -15,7 +16,7 @@ class Session:
         self.collection.create_index([('client_id', 1), ('date', -1)])
     
     def create_session(self, therapist_id, client_id, scheduled_date, duration=60, 
-                      session_type='individual', status='scheduled'):
+                      session_type='individual', status='scheduled', location=None, meeting_link=None):
         """Create a new session"""
         session_data = {
             'therapist_id': ObjectId(therapist_id),
@@ -26,6 +27,8 @@ class Session:
             'duration': duration,  # in minutes
             'session_type': session_type,  # individual, group, family, etc.
             'status': status,  # scheduled, in-progress, completed, cancelled
+            'location': location,  # physical location or "Online"
+            'meeting_link': meeting_link,  # video call link (Zoom, Google Meet, etc.)
             'recording_url': None,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
@@ -115,21 +118,40 @@ class Session:
         
         return self.update_session(session_id, update_data)
     
-    def to_dict(self, session):
+    def delete_session(self, session_id):
+        """Delete a session"""
+        result = self.collection.delete_one({'_id': ObjectId(session_id)})
+        return result.deleted_count > 0
+    
+    def to_dict(self, session, populate_client=False):
         """Convert session document to dictionary"""
         if not session:
             return None
         
+        # Get client info if needed
+        client_data = str(session['client_id'])
+        if populate_client:
+            from models.client import Client
+            client_model = Client(self.db)
+            client = client_model.find_by_id(str(session['client_id']))
+            if client:
+                client_data = {
+                    '_id': str(client['_id']),
+                    'name': client.get('name', 'Unknown Client')
+                }
+        
         return {
-            'id': str(session['_id']),
+            '_id': str(session['_id']),
             'therapist_id': str(session['therapist_id']),
-            'client_id': str(session['client_id']),
+            'client_id': client_data,
             'scheduled_date': session['scheduled_date'].isoformat() if session.get('scheduled_date') else None,
             'start_time': session['start_time'].isoformat() if session.get('start_time') else None,
             'end_time': session['end_time'].isoformat() if session.get('end_time') else None,
             'duration': session.get('duration'),
             'session_type': session.get('session_type'),
             'status': session.get('status'),
+            'location': session.get('location'),
+            'meeting_link': session.get('meeting_link'),
             'recording_url': session.get('recording_url'),
             'created_at': session['created_at'].isoformat() if session.get('created_at') else None,
             'updated_at': session['updated_at'].isoformat() if session.get('updated_at') else None

@@ -90,7 +90,7 @@ class Client:
             return None
         
         return {
-            'id': str(client['_id']),
+            '_id': str(client['_id']),
             'therapist_id': str(client['therapist_id']),
             'name': client['name'],
             'email': client['email'],

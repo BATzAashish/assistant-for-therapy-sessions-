@@ -1,16 +1,21 @@
 from flask import Flask, jsonify
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager
+from flask_socketio import SocketIO
 from pymongo import MongoClient
 from config import config
 import os
 
 # Initialize Flask app
 app = Flask(__name__)
+app.url_map.strict_slashes = False
 
 # Load configuration
 env = os.environ.get('FLASK_ENV', 'development')
 app.config.from_object(config[env])
+
+# Initialize Socket.IO
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Initialize extensions
 CORS(app, 
@@ -18,7 +23,9 @@ CORS(app,
          "origins": app.config['CORS_ORIGINS'],
          "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
          "allow_headers": ["Content-Type", "Authorization"],
-         "supports_credentials": True
+         "expose_headers": ["Content-Type", "Authorization"],
+         "supports_credentials": True,
+         "max_age": 3600
      }})
 jwt = JWTManager(app)
 
@@ -42,6 +49,8 @@ from routes.client_routes import client_bp
 from routes.session_routes import session_bp
 from routes.notes_routes import notes_bp
 from routes.ai_routes import ai_bp
+from routes.meeting_routes import meeting_bp
+from routes.webrtc_routes import webrtc_bp, init_socketio
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -49,6 +58,18 @@ app.register_blueprint(client_bp, url_prefix='/api/clients')
 app.register_blueprint(session_bp, url_prefix='/api/sessions')
 app.register_blueprint(notes_bp, url_prefix='/api/notes')
 app.register_blueprint(ai_bp, url_prefix='/api/ai')
+app.register_blueprint(meeting_bp, url_prefix='/api/meetings')
+app.register_blueprint(webrtc_bp, url_prefix='/api/webrtc')
+
+# Initialize WebRTC Socket.IO handlers
+init_socketio(socketio, db)
+
+# Debug: Print all registered routes
+print("\n📍 Registered Routes:")
+for rule in app.url_map.iter_rules():
+    methods = ', '.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
+    print(f"  {rule.endpoint:50s} {methods:30s} {rule.rule}")
+print()
 
 # Health check endpoint
 @app.route('/api/health', methods=['GET'])
@@ -87,4 +108,5 @@ def missing_token_callback(error):
     return jsonify({'error': 'Authorization token is missing'}), 401
 
 if __name__ == '__main__':
-    app.run(debug=app.config['DEBUG'], host='0.0.0.0', port=5000)
+    # Run with Socket.IO
+    socketio.run(app, debug=app.config['DEBUG'], host='0.0.0.0', port=5000)

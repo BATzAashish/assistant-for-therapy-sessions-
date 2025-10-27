@@ -5,6 +5,7 @@ class Note:
     """Note model for session notes"""
     
     def __init__(self, db):
+        self.db = db
         self.collection = db.notes
         self._create_indexes()
     
@@ -77,16 +78,43 @@ class Note:
         result = self.collection.delete_one({'_id': ObjectId(note_id)})
         return result.deleted_count > 0
     
-    def to_dict(self, note):
+    def to_dict(self, note, populate_refs=False):
         """Convert note document to dictionary"""
         if not note:
             return None
         
+        # Get client and session info if needed
+        client_data = str(note['client_id'])
+        session_data = str(note['session_id']) if note.get('session_id') else None
+        
+        if populate_refs:
+            from models.client import Client
+            from models.session import Session
+            
+            # Populate client
+            client_model = Client(self.db)
+            client = client_model.find_by_id(str(note['client_id']))
+            if client:
+                client_data = {
+                    '_id': str(client['_id']),
+                    'name': client.get('name', 'Unknown Client')
+                }
+            
+            # Populate session if exists
+            if note.get('session_id'):
+                session_model = Session(self.db)
+                session = session_model.find_by_id(str(note['session_id']))
+                if session:
+                    session_data = {
+                        '_id': str(session['_id']),
+                        'scheduled_date': session['scheduled_date'].isoformat() if session.get('scheduled_date') else None
+                    }
+        
         return {
-            'id': str(note['_id']),
+            '_id': str(note['_id']),
             'therapist_id': str(note['therapist_id']),
-            'client_id': str(note['client_id']),
-            'session_id': str(note['session_id']) if note.get('session_id') else None,
+            'client_id': client_data,
+            'session_id': session_data,
             'content': note['content'],
             'note_type': note.get('note_type'),
             'is_private': note.get('is_private', True),
