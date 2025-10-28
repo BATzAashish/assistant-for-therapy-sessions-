@@ -34,11 +34,11 @@ export const authAPI = {
     return handleResponse(response);
   },
 
-  register: async (username: string, email: string, password: string, role: string = 'therapist') => {
+  register: async (userData: { username: string; email: string; password: string; full_name: string }) => {
     const response = await fetch(`${API_BASE_URL}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, email, password, role }),
+      body: JSON.stringify(userData),
     });
     return handleResponse(response);
   },

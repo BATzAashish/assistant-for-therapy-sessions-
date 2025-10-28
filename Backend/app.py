@@ -35,9 +35,10 @@ try:
     db = mongo_client.get_database()
     # Test the connection
     db.command('ping')
-    print("✓ Successfully connected to MongoDB!")
+    print("Successfully connected to MongoDB!")
 except Exception as e:
-    print(f"✗ Error connecting to MongoDB: {e}")
+    print(f"Warning: Could not connect to MongoDB: {e}")
+    print("Note: Make sure MongoDB is running or update MONGO_URI in config")
     db = None
 
 # Make db available to routes
@@ -65,7 +66,7 @@ app.register_blueprint(webrtc_bp, url_prefix='/api/webrtc')
 init_socketio(socketio, db)
 
 # Debug: Print all registered routes
-print("\n📍 Registered Routes:")
+print("\nRegistered Routes:")
 for rule in app.url_map.iter_rules():
     methods = ', '.join(sorted(rule.methods - {'HEAD', 'OPTIONS'}))
     print(f"  {rule.endpoint:50s} {methods:30s} {rule.rule}")

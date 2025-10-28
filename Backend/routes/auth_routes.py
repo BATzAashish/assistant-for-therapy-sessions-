@@ -8,12 +8,17 @@ auth_bp = Blueprint('auth', __name__)
 def register():
     """Register a new therapist user"""
     try:
+        # Check if database is connected
+        if current_app.db is None:
+            return jsonify({'error': 'Database not connected. Please ensure MongoDB is running.'}), 503
+        
         data = request.get_json()
         
         # Validate required fields
         required_fields = ['email', 'username', 'password', 'full_name']
-        if not all(field in data for field in required_fields):
-            return jsonify({'error': 'Missing required fields'}), 400
+        missing_fields = [field for field in required_fields if field not in data]
+        if missing_fields:
+            return jsonify({'error': f'Missing required fields: {", ".join(missing_fields)}'}), 400
         
         user_model = User(current_app.db)
         
