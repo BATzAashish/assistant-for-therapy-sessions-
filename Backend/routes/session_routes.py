@@ -186,7 +186,7 @@ def start_session(session_id):
 @session_bp.route('/<session_id>/end', methods=['POST'])
 @jwt_required()
 def end_session(session_id):
-    """End a session"""
+    """End a session and automatically generate notes"""
     try:
         current_user_id = get_jwt_identity()
         session_model = Session(current_app.db)
@@ -200,12 +200,142 @@ def end_session(session_id):
         if str(session['therapist_id']) != current_user_id:
             return jsonify({'error': 'Unauthorized'}), 403
         
+        # Get any transcription data from the request body
+        data = request.get_json() or {}
+        transcription_data = data.get('transcription_data', [])
+        
+        # End the session
         if session_model.end_session(session_id):
             updated_session = session_model.find_by_id(session_id)
-            return jsonify({
+            
+            # Auto-generate notes from transcription if available
+            note_created = False
+            note_id = None
+            
+            print(f"\n[AUTO-NOTES] Checking transcription data: {bool(transcription_data)}")
+            if transcription_data:
+                print(f"[AUTO-NOTES] Transcription length: {len(transcription_data)} messages")
+            
+            if transcription_data:
+                try:
+                    from services.transcription_service import TranscriptionService, MockTranscriptionService
+                    from services.summary_service import SummaryService, MockSummaryService
+                    from models.note import Note
+                    from models.client import Client
+                    import os
+                    
+                    # Use mock services if no API key is configured
+                    has_api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('GEMINI_API_KEY')
+                    print(f"[AUTO-NOTES] Has API key: {bool(has_api_key)}")
+                    if has_api_key:
+                        transcription_service = TranscriptionService()
+                        summary_service = SummaryService()
+                        print(f"[AUTO-NOTES] Using real AI service")
+                    else:
+                        transcription_service = MockTranscriptionService()
+                        summary_service = MockSummaryService()
+                        print(f"[AUTO-NOTES] Using mock service")
+                    
+                    # Format the transcription
+                    transcript_text = transcription_service.format_transcript(transcription_data)
+                    print(f"[AUTO-NOTES] Formatted transcript length: {len(transcript_text)} chars")
+                    
+                    # Get client information for personalized summary
+                    client_model = Client(current_app.db)
+                    client = client_model.find_by_id(str(session['client_id']))
+                    client_name = client.get('name') if client else None
+                    print(f"[AUTO-NOTES] Client name: {client_name}")
+                    
+                    # Generate summary
+                    print(f"[AUTO-NOTES] Generating summary with {summary_service.__class__.__name__}...")
+                    summary_result = summary_service.generate_session_summary(
+                        transcript=transcript_text,
+                        session_type=session.get('session_type', 'individual'),
+                        client_name=client_name
+                    )
+                    print(f"[AUTO-NOTES] Summary result success: {summary_result.get('success')}")
+                    
+                    if summary_result['success']:
+                        # Extract key points
+                        key_points_result = summary_service.extract_key_points(transcript_text)
+                        
+                        # Get session number for this client
+                        session_model_count = Session(current_app.db)
+                        client_sessions = list(current_app.db.sessions.find({
+                            'client_id': session['client_id'],
+                            'status': {'$in': ['completed', 'cancelled']}
+                        }).sort('created_at', 1))
+                        session_number = len([s for s in client_sessions if s['_id'] <= session['_id']])
+                        
+                        # Get client name for title
+                        client_name_display = client_name if client_name else "Client"
+                        
+                        # Create comprehensive note content with session number
+                        note_content = f"""# {client_name_display} - Session {session_number}
+**Date:** {datetime.utcnow().strftime('%B %d, %Y')}
+**Duration:** {session.get('duration', 'N/A')}
+**Type:** {session.get('session_type', 'individual').title()}
+
+---
+
+## Clinical Summary
+{summary_result['summary']}
+
+---
+
+## Session Transcript
+{transcript_text}
+"""
+                        
+                        # Add key points if available
+                        if key_points_result.get('success'):
+                            key_points = key_points_result['key_points']
+                            note_content += f"""
+---
+
+## Quick Reference
+
+### Topics Addressed
+{chr(10).join([f'• {topic}' for topic in key_points.get('main_topics', [])]) if key_points.get('main_topics') else '• None recorded'}
+
+### Emotions & Mood
+{chr(10).join([f'• {emotion}' for emotion in key_points.get('emotions_identified', [])]) if key_points.get('emotions_identified') else '• None identified'}
+
+### Action Items
+{chr(10).join([f'• {item}' for item in key_points.get('action_items', [])]) if key_points.get('action_items') else '• None assigned'}
+
+### Next Session Plan
+{key_points.get('next_session_focus', 'To be determined based on client progress')}
+"""
+                        
+                        # Save the note
+                        note_model = Note(current_app.db)
+                        note_id = note_model.create_note(
+                            therapist_id=current_user_id,
+                            client_id=str(session['client_id']),
+                            session_id=session_id,
+                            content=note_content,
+                            note_type='session'
+                        )
+                        note_created = True
+                        print(f"[AUTO-NOTES] Note created successfully with ID: {note_id}")
+                        
+                except Exception as note_error:
+                    # Log the error but don't fail the session end
+                    print(f"[AUTO-NOTES] Error creating automatic notes: {note_error}")
+                    import traceback
+                    traceback.print_exc()
+            
+            response_data = {
                 'message': 'Session ended successfully',
-                'session': session_model.to_dict(updated_session)
-            }), 200
+                'session': session_model.to_dict(updated_session),
+                'note_auto_generated': note_created
+            }
+            
+            if note_created and note_id:
+                response_data['note_id'] = note_id
+            
+            return jsonify(response_data), 200
         else:
             return jsonify({'error': 'Failed to end session'}), 500
         

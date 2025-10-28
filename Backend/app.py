@@ -14,8 +14,23 @@ app.url_map.strict_slashes = False
 env = os.environ.get('FLASK_ENV', 'development')
 app.config.from_object(config[env])
 
-# Initialize Socket.IO
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
+# Initialize Socket.IO with polling only to avoid WebSocket errors in development
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*",
+    async_mode='threading',
+    logger=False,
+    engineio_logger=False,
+    # Use polling only - more reliable in development
+    transports=['polling'],
+    # Disable WebSocket upgrades
+    allow_upgrades=False,
+    # Increase timeouts
+    ping_timeout=60,
+    ping_interval=25,
+    # CORS settings
+    cors_credentials=True
+)
 
 # Initialize extensions
 CORS(app, 
@@ -31,7 +46,14 @@ jwt = JWTManager(app)
 
 # Initialize MongoDB
 try:
-    mongo_client = MongoClient(app.config['MONGO_URI'])
+    mongo_client = MongoClient(
+        app.config['MONGO_URI'],
+        serverSelectionTimeoutMS=5000,
+        connectTimeoutMS=30000,
+        socketTimeoutMS=30000,
+        retryWrites=True,
+        retryReads=True
+    )
     db = mongo_client.get_database()
     # Test the connection
     db.command('ping')

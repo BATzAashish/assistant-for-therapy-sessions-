@@ -1,9 +1,11 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, current_app
 from flask_socketio import SocketIO, emit, join_room, leave_room, rooms
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime
 from bson.objectid import ObjectId
 import logging
+import base64
+import io
 
 logger = logging.getLogger(__name__)
 
@@ -190,6 +192,61 @@ def init_socketio(socketio: SocketIO, db):
             'speaker': speaker,
             'text': text
         }, room=session_id)
+    
+    @socketio.on('audio_chunk')
+    def handle_audio_chunk(data):
+        """Receive and transcribe audio chunks in real-time"""
+        try:
+            session_id = data.get('session_id')
+            audio_data = data.get('audio_data')  # Base64 encoded audio
+            speaker = data.get('speaker', 'unknown')
+            
+            if not session_id or not audio_data:
+                return
+            
+            # Lazy import to avoid circular dependencies
+            from services.transcription_service import TranscriptionService, MockTranscriptionService
+            import os
+            
+            # Use mock service if no API key is configured
+            if os.environ.get('OPENAI_API_KEY'):
+                transcription_service = TranscriptionService()
+            else:
+                transcription_service = MockTranscriptionService()
+            
+            # Decode audio data
+            try:
+                audio_bytes = base64.b64decode(audio_data)
+            except:
+                logger.error("Failed to decode audio data")
+                return
+            
+            # Transcribe the audio chunk
+            result = transcription_service.transcribe_audio_chunk(audio_bytes)
+            
+            if result['success']:
+                text = result['text']
+                timestamp = datetime.utcnow().isoformat()
+                
+                # Store transcription
+                if session_id in active_sessions:
+                    active_sessions[session_id]['transcription'].append({
+                        'timestamp': timestamp,
+                        'speaker': speaker,
+                        'text': text
+                    })
+                
+                # Broadcast to all participants
+                emit('transcription_update', {
+                    'timestamp': timestamp,
+                    'speaker': speaker,
+                    'text': text
+                }, room=session_id)
+            else:
+                logger.error(f"Transcription failed: {result.get('error')}")
+                
+        except Exception as e:
+            logger.error(f"Error handling audio chunk: {e}")
 
 # REST API endpoints
 @webrtc_bp.route('/session/<session_id>/start', methods=['POST'])
@@ -237,6 +294,96 @@ def end_video_session(session_id):
         
         session_data = active_sessions[session_id]
         session_data['end_time'] = datetime.utcnow().isoformat()
+        
+        # Automatically update the main session with transcription data
+        try:
+            from models.session import Session
+            from models.note import Note
+            from models.client import Client
+            from services.transcription_service import TranscriptionService, MockTranscriptionService
+            from services.summary_service import SummaryService, MockSummaryService
+            import os
+            
+            session_model = Session(current_app.db)
+            session = session_model.find_by_id(session_id)
+            
+            if session and session_data.get('transcription'):
+                # Use mock services if no API key
+                has_api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('GEMINI_API_KEY')
+                if has_api_key:
+                    transcription_service = TranscriptionService()
+                    summary_service = SummaryService()
+                else:
+                    transcription_service = MockTranscriptionService()
+                    summary_service = MockSummaryService()
+                
+                # Format transcription
+                transcript_text = transcription_service.format_transcript(
+                    session_data['transcription']
+                )
+                
+                # Get client info
+                client_model = Client(current_app.db)
+                client = client_model.find_by_id(str(session['client_id']))
+                client_name = client.get('name') if client else None
+                
+                # Generate summary
+                summary_result = summary_service.generate_session_summary(
+                    transcript=transcript_text,
+                    session_type=session.get('session_type', 'individual'),
+                    client_name=client_name
+                )
+                
+                if summary_result['success']:
+                    # Extract key points
+                    key_points_result = summary_service.extract_key_points(transcript_text)
+                    
+                    # Create note content
+                    note_content = f"""# Session Notes - {datetime.utcnow().strftime('%B %d, %Y')}
+
+## AI-Generated Summary
+{summary_result['summary']}
+
+---
+
+## Full Transcript
+{transcript_text}
+
+---
+
+"""
+                    if key_points_result['success']:
+                        key_points = key_points_result['key_points']
+                        note_content += f"""## Key Points
+
+**Main Topics:**
+{chr(10).join([f'- {topic}' for topic in key_points.get('main_topics', [])])}
+
+**Emotions Identified:**
+{chr(10).join([f'- {emotion}' for emotion in key_points.get('emotions_identified', [])])}
+
+**Action Items:**
+{chr(10).join([f'- {item}' for item in key_points.get('action_items', [])])}
+
+**Next Session Focus:**
+{key_points.get('next_session_focus', 'To be determined')}
+"""
+                    
+                    # Save the note
+                    note_model = Note(current_app.db)
+                    note_id = note_model.create_note(
+                        therapist_id=str(session['therapist_id']),
+                        client_id=str(session['client_id']),
+                        session_id=session_id,
+                        content=note_content,
+                        note_type='session'
+                    )
+                    session_data['auto_note_created'] = True
+                    session_data['note_id'] = note_id
+                    
+        except Exception as note_error:
+            logger.error(f"Error auto-creating notes: {note_error}")
+            session_data['auto_note_error'] = str(note_error)
         
         # Clean up
         result = session_data.copy()

@@ -65,6 +65,8 @@ def login():
         identifier = data.get('email') or data.get('username')
         password = data.get('password')
         
+        print(f"\n[LOGIN] Attempting login for: {identifier}")
+        
         if not identifier or not password:
             return jsonify({'error': 'Username/email and password are required'}), 400
         
@@ -75,8 +77,17 @@ def login():
         if not user:
             user = user_model.find_by_username(identifier)
         
+        if not user:
+            print(f"[LOGIN] User not found: {identifier}")
+            return jsonify({'error': 'Invalid credentials'}), 401
+        
+        print(f"[LOGIN] User found: {user.get('username')} ({user.get('email')})")
+        
         # Verify password
-        if not user or not user_model.verify_password(user, password):
+        password_valid = user_model.verify_password(user, password)
+        print(f"[LOGIN] Password valid: {password_valid}")
+        
+        if not password_valid:
             return jsonify({'error': 'Invalid credentials'}), 401
         
         # Check if user is active
