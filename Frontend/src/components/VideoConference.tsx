@@ -55,6 +55,10 @@ const VideoConference = ({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const emotionIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
+  // Speech recognition
+  const recognitionRef = useRef<any>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  
   // State
   const [isVideoOn, setIsVideoOn] = useState(true);
   const [isAudioOn, setIsAudioOn] = useState(true);
@@ -63,6 +67,8 @@ const VideoConference = ({
   const [currentEmotion, setCurrentEmotion] = useState<EmotionData | null>(null);
   const [emotionHistory, setEmotionHistory] = useState<EmotionData[]>([]);
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
   
   // WebRTC Configuration
   const iceServers = {
@@ -82,9 +88,9 @@ const VideoConference = ({
   
   const initializeConnection = async () => {
     try {
-      // Connect to Socket.IO
+      // Connect to Socket.IO - use polling only to match backend configuration
       const socket = io("http://localhost:5000", {
-        transports: ["websocket"],
+        transports: ["polling"],
         auth: {
           token: localStorage.getItem("token"),
         },
@@ -172,22 +178,43 @@ const VideoConference = ({
   
   const getLocalMedia = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { width: 1280, height: 720 },
-        audio: true,
-      });
+      // Request with more permissive constraints and timeout
+      const constraints = {
+        video: {
+          width: { ideal: 1280, max: 1920 },
+          height: { ideal: 720, max: 1080 },
+          facingMode: "user"
+        },
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true
+        }
+      };
+
+      // Add timeout to prevent hanging
+      const mediaPromise = navigator.mediaDevices.getUserMedia(constraints);
+      const timeoutPromise = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('Media request timeout')), 10000)
+      );
+
+      const stream = await Promise.race([mediaPromise, timeoutPromise]) as MediaStream;
       
       localStreamRef.current = stream;
       
       const localVideo = localVideoRef.current;
       if (localVideo) {
         localVideo.srcObject = stream;
+        await localVideo.play();
       }
       
       // Start emotion detection (client side)
       if (userType === "client") {
         startEmotionDetection();
       }
+      
+      // Start speech recognition for transcription
+      startSpeechRecognition();
       
       toast({
         title: "Camera & Microphone",
@@ -196,11 +223,28 @@ const VideoConference = ({
       
     } catch (error: any) {
       console.error("Error accessing media:", error);
-      toast({
-        title: "Media Access Error",
-        description: "Could not access camera/microphone",
-        variant: "destructive",
-      });
+      
+      // Try audio-only fallback
+      try {
+        const audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        localStreamRef.current = audioStream;
+        setIsVideoOn(false);
+        
+        // Start speech recognition even without video
+        startSpeechRecognition();
+        
+        toast({
+          title: "Audio Only Mode",
+          description: "Camera unavailable, microphone connected",
+          variant: "default",
+        });
+      } catch (audioError) {
+        toast({
+          title: "Media Access Error",
+          description: "Could not access camera or microphone. Please check permissions.",
+          variant: "destructive",
+        });
+      }
     }
   };
   
@@ -357,6 +401,85 @@ const VideoConference = ({
     }
   };
   
+  const startSpeechRecognition = () => {
+    // Check if browser supports Web Speech API
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    
+    if (!SpeechRecognition) {
+      console.warn("Speech recognition not supported in this browser");
+      return;
+    }
+    
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = 'en-US';
+    
+    recognition.onstart = () => {
+      setIsTranscribing(true);
+      console.log("Speech recognition started");
+    };
+    
+    recognition.onresult = (event: any) => {
+      let interimTranscript = '';
+      let finalTranscript = '';
+      
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          finalTranscript += transcript + ' ';
+        } else {
+          interimTranscript += transcript;
+        }
+      }
+      
+      // Send final transcript to backend
+      if (finalTranscript) {
+        // Send to backend via socket (don't add to local state yet)
+        // The backend will broadcast it back to all participants including us
+        const socket = socketRef.current;
+        if (socket) {
+          socket.emit("transcription_chunk", {
+            session_id: sessionId,
+            text: finalTranscript.trim(),
+            speaker: userType
+          });
+        }
+      }
+    };
+    
+    recognition.onerror = (event: any) => {
+      console.error("Speech recognition error:", event.error);
+      if (event.error === 'no-speech') {
+        // Restart if no speech detected
+        setTimeout(() => {
+          if (recognitionRef.current) {
+            recognitionRef.current.start();
+          }
+        }, 1000);
+      }
+    };
+    
+    recognition.onend = () => {
+      // Auto-restart recognition
+      if (isConnected && recognitionRef.current) {
+        try {
+          recognition.start();
+        } catch (e) {
+          console.log("Recognition restart failed:", e);
+        }
+      }
+    };
+    
+    recognitionRef.current = recognition;
+    
+    try {
+      recognition.start();
+    } catch (error) {
+      console.error("Failed to start recognition:", error);
+    }
+  };
+  
   const toggleVideo = () => {
     const localStream = localStreamRef.current;
     if (localStream) {
@@ -381,36 +504,82 @@ const VideoConference = ({
   
   const endSession = async () => {
     try {
-      // Get session data
+      // Stop speech recognition first
+      if (recognitionRef.current) {
+        recognitionRef.current.stop();
+        recognitionRef.current = null;
+      }
+      
+      // Prepare transcription data
+      const transcriptionData = transcript.map(segment => ({
+        start: Math.floor((new Date(segment.timestamp).getTime() - new Date(transcript[0]?.timestamp || segment.timestamp).getTime()) / 1000),
+        text: segment.text,
+        speaker: segment.speaker
+      }));
+      
+      // End session and send transcription for auto-note generation
       const response = await fetch(
-        `http://localhost:5000/api/webrtc/session/${sessionId}/end`,
+        `http://localhost:5000/api/sessions/${sessionId}/end`,
         {
           method: "POST",
           headers: {
+            "Content-Type": "application/json",
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
+          body: JSON.stringify({
+            transcription_data: transcriptionData
+          })
         }
       );
       
       const data = await response.json();
       
+      if (data.note_auto_generated) {
+        toast({
+          title: "Session Ended",
+          description: `Session notes generated automatically (Note ID: ${data.note_id})`,
+          duration: 5000,
+        });
+      } else {
+        toast({
+          title: "Session Ended",
+          description: "Video session has been terminated",
+        });
+      }
+      
       if (onSessionEnd) {
-        onSessionEnd(data.session_data);
+        onSessionEnd(data);
       }
       
       cleanup();
       
-      toast({
-        title: "Session Ended",
-        description: "Video session has been terminated",
-      });
-      
     } catch (error) {
       console.error("Error ending session:", error);
+      toast({
+        title: "Error",
+        description: "Failed to end session properly",
+        variant: "destructive",
+      });
+      cleanup();
     }
   };
   
   const cleanup = () => {
+    // Stop speech recognition
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch (e) {
+        console.log("Recognition already stopped");
+      }
+      recognitionRef.current = null;
+    }
+    
+    // Stop media recorder
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+    }
+    
     // Stop emotion detection
     const emotionInterval = emotionIntervalRef.current;
     if (emotionInterval) {
@@ -433,10 +602,12 @@ const VideoConference = ({
     // Disconnect socket
     const socket = socketRef.current;
     if (socket) {
+      socket.emit("leave_session", { session_id: sessionId });
       socket.disconnect();
     }
     
     setIsConnected(false);
+    setIsTranscribing(false);
   };
   
   const getEmotionColor = (emotion: string) => {
@@ -463,9 +634,25 @@ const VideoConference = ({
           {isConnected && (
             <Badge className="bg-green-500 text-white">Connected</Badge>
           )}
+          {isTranscribing && (
+            <Badge className="bg-blue-500 text-white animate-pulse">
+              <MessageSquare className="h-3 w-3 mr-1" />
+              Transcribing
+            </Badge>
+          )}
         </div>
         
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="text-white"
+          >
+            <MessageSquare className="h-4 w-4 mr-2" />
+            {showTranscript ? "Hide" : "Show"} Transcript
+          </Button>
+          
           <Button
             variant="ghost"
             size="icon"
@@ -488,6 +675,7 @@ const VideoConference = ({
             variant="destructive"
             size="icon"
             onClick={endSession}
+            title="End session and generate notes"
           >
             <PhoneOff />
           </Button>
@@ -544,54 +732,82 @@ const VideoConference = ({
           </Card>
         </div>
         
-        {/* Sidebar */}
-        {userType === "therapist" && (
+        {/* Sidebar - Show transcript for all, emotions only for therapist */}
+        {showTranscript && (
           <div className="w-96 flex flex-col gap-4">
-            {/* Emotion Timeline */}
+            {/* Live Transcript */}
             <Card className="p-4 bg-slate-800 text-white flex-1 overflow-y-auto">
-              <div className="flex items-center gap-2 mb-4">
-                <Activity className="h-5 w-5" />
-                <h3 className="font-semibold">Emotion Timeline</h3>
+              <div className="flex items-center justify-between mb-4">
+                <div className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  <h3 className="font-semibold">Live Transcript</h3>
+                </div>
+                {isTranscribing && (
+                  <div className="flex items-center gap-1">
+                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                    <span className="text-xs text-slate-400">Recording</span>
+                  </div>
+                )}
               </div>
               
-              <div className="space-y-2">
-                {emotionHistory.slice(-10).reverse().map((emotion, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between text-sm"
-                  >
-                    <span>{new Date(emotion.timestamp).toLocaleTimeString()}</span>
-                    <div className="flex items-center gap-2">
-                      <span className="capitalize">{emotion.dominant_emotion}</span>
-                      <div
-                        className={`w-2 h-2 rounded-full ${getEmotionColor(
-                          emotion.dominant_emotion
-                        )}`}
-                      />
-                    </div>
+              <div className="space-y-3 max-h-[calc(100%-4rem)] overflow-y-auto">
+                {transcript.length === 0 ? (
+                  <div className="text-center text-slate-400 py-8">
+                    <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-30" />
+                    <p>Transcript will appear here as you speak</p>
+                    <p className="text-xs mt-2">Make sure your microphone is enabled</p>
                   </div>
-                ))}
+                ) : (
+                  transcript.map((segment, idx) => (
+                    <div key={idx} className="text-sm border-l-2 border-slate-600 pl-3">
+                      <div className="text-slate-400 text-xs flex items-center gap-2">
+                        <span>{new Date(segment.timestamp).toLocaleTimeString()}</span>
+                        <span className="capitalize font-semibold text-blue-400">
+                          {segment.speaker === 'therapist' ? '🩺 Therapist' : '👤 Client'}
+                        </span>
+                      </div>
+                      <div className="mt-1">{segment.text}</div>
+                    </div>
+                  ))
+                )}
               </div>
             </Card>
             
-            {/* Live Transcript */}
-            <Card className="p-4 bg-slate-800 text-white flex-1 overflow-y-auto">
-              <div className="flex items-center gap-2 mb-4">
-                <MessageSquare className="h-5 w-5" />
-                <h3 className="font-semibold">Live Transcript</h3>
-              </div>
-              
-              <div className="space-y-3">
-                {transcript.slice(-10).reverse().map((segment, idx) => (
-                  <div key={idx} className="text-sm">
-                    <div className="text-slate-400 text-xs">
-                      {new Date(segment.timestamp).toLocaleTimeString()} - {segment.speaker}
+            {/* Emotion Timeline - Only for therapist */}
+            {userType === "therapist" && (
+              <Card className="p-4 bg-slate-800 text-white" style={{ maxHeight: '300px', overflowY: 'auto' }}>
+                <div className="flex items-center gap-2 mb-4">
+                  <Activity className="h-5 w-5" />
+                  <h3 className="font-semibold">Client Emotions</h3>
+                </div>
+                
+                <div className="space-y-2">
+                  {emotionHistory.length === 0 ? (
+                    <div className="text-center text-slate-400 py-4">
+                      <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
+                      <p className="text-sm">Emotion data will appear here</p>
                     </div>
-                    <div>{segment.text}</div>
-                  </div>
-                ))}
-              </div>
-            </Card>
+                  ) : (
+                    emotionHistory.slice(-10).reverse().map((emotion, idx) => (
+                      <div
+                        key={idx}
+                        className="flex items-center justify-between text-sm p-2 bg-slate-700/50 rounded"
+                      >
+                        <span className="text-xs">{new Date(emotion.timestamp).toLocaleTimeString()}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="capitalize text-sm">{emotion.dominant_emotion}</span>
+                          <div
+                            className={`w-3 h-3 rounded-full ${getEmotionColor(
+                              emotion.dominant_emotion
+                            )}`}
+                          />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            )}
           </div>
         )}
       </div>
