@@ -25,6 +25,8 @@ import {
   ChevronRight,
   MapPin,
   Link as LinkIcon,
+  Search,
+  Repeat,
 } from "lucide-react";
 import { sessionAPI, clientAPI } from "@/lib/api";
 import { aiAPI } from "@/lib/api";
@@ -55,6 +57,8 @@ const SessionPage = () => {
   const { collapsed } = useSidebar();
   const [searchParams] = useSearchParams();
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [filteredSessions, setFilteredSessions] = useState<Session[]>([]);
+  const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
@@ -65,6 +69,11 @@ const SessionPage = () => {
     session_type: "individual",
     location: "",
     meeting_link: "",
+    // Recurring session fields
+    is_recurring: false,
+    recurrence_type: "weekly" as "weekly" | "monthly" | "custom",
+    recurrence_count: 4,
+    custom_interval_days: 7,
   });
 
   useEffect(() => {
@@ -80,6 +89,18 @@ const SessionPage = () => {
       setIsOpen(true);
     }
   }, []);
+
+  // Filter sessions based on search term
+  useEffect(() => {
+    if (!searchTerm.trim()) {
+      setFilteredSessions(sessions);
+    } else {
+      const filtered = sessions.filter((session) => 
+        session.client_id?.name?.toLowerCase().includes(searchTerm.toLowerCase())
+      );
+      setFilteredSessions(filtered);
+    }
+  }, [sessions, searchTerm]);
 
   const fetchSessions = async () => {
     try {
@@ -121,65 +142,74 @@ const SessionPage = () => {
     }
 
     try {
-      // Step 1: Get client name for meeting generation
       const selectedClient = clients.find(c => c._id === formData.client_id);
       const clientName = selectedClient?.name || "Client";
       
-      // Step 2: Auto-generate Google Meet link
-      let generatedMeetingLink = formData.meeting_link;
+      // Calculate sessions to create based on recurrence
+      const sessionsToCreate = [];
+      const baseDate = new Date(formData.scheduled_date);
+      const sessionCount = formData.is_recurring ? formData.recurrence_count : 1;
       
-      if (!generatedMeetingLink) {
-        toast({
-          title: "Generating meeting link...",
-          description: "Creating Google Meet link for your session",
+      for (let i = 0; i < sessionCount; i++) {
+        let sessionDate = new Date(baseDate);
+        
+        if (i > 0) {
+          // Calculate future dates based on recurrence type
+          if (formData.recurrence_type === "weekly") {
+            sessionDate.setDate(baseDate.getDate() + (i * 7));
+          } else if (formData.recurrence_type === "monthly") {
+            sessionDate.setMonth(baseDate.getMonth() + i);
+          } else if (formData.recurrence_type === "custom") {
+            sessionDate.setDate(baseDate.getDate() + (i * formData.custom_interval_days));
+          }
+        }
+        
+        // Auto-generate meeting link for each session
+        let meetingLink = formData.meeting_link;
+        
+        if (!meetingLink) {
+          try {
+            const endTime = new Date(sessionDate.getTime() + formData.duration * 60000);
+            const meetingResponse = await aiAPI.createMeeting({
+              client_name: clientName,
+              start_time: sessionDate.toISOString(),
+              end_time: endTime.toISOString(),
+            });
+            meetingLink = meetingResponse.meeting_link;
+          } catch (meetingError) {
+            console.warn("Failed to generate meeting link:", meetingError);
+          }
+        }
+        
+        sessionsToCreate.push({
+          client_id: formData.client_id,
+          scheduled_date: sessionDate.toISOString(),
+          duration: formData.duration,
+          session_type: formData.session_type,
+          status: "scheduled",
+          location: formData.location || undefined,
+          meeting_link: meetingLink || undefined,
         });
-
+      }
+      
+      // Create all sessions
+      const createdSessions = [];
+      for (const sessionData of sessionsToCreate) {
         try {
-          const scheduledDate = new Date(formData.scheduled_date);
-          const endTime = new Date(scheduledDate.getTime() + formData.duration * 60000);
-          
-          const meetingResponse = await aiAPI.createMeeting({
-            client_name: clientName,
-            start_time: scheduledDate.toISOString(),
-            end_time: endTime.toISOString(),
-          });
-          
-          generatedMeetingLink = meetingResponse.meeting_link;
-          
-          toast({
-            title: "Meeting link generated!",
-            description: `Google Meet link created successfully`,
-          });
-        } catch (meetingError: any) {
-          console.warn("Failed to generate meeting link:", meetingError);
-          toast({
-            title: "Warning",
-            description: "Couldn't generate meeting link automatically. You can add it manually later.",
-            variant: "destructive",
-          });
+          const result = await sessionAPI.create(sessionData);
+          createdSessions.push(result);
+        } catch (error) {
+          console.error("Failed to create session:", error);
         }
       }
-
-      // Step 3: Create the session with the meeting link
-      const sessionData = {
-        client_id: formData.client_id,
-        scheduled_date: new Date(formData.scheduled_date).toISOString(),
-        duration: formData.duration,
-        session_type: formData.session_type,
-        status: "scheduled",
-        location: formData.location || undefined,
-        meeting_link: generatedMeetingLink || undefined,
-      };
       
-      console.log("🟢 Sending to API:", sessionData);
-
-      await sessionAPI.create(sessionData);
       toast({
         title: "Success",
-        description: generatedMeetingLink 
-          ? "Session created with meeting link!" 
+        description: formData.is_recurring 
+          ? `Created ${createdSessions.length} recurring sessions!`
           : "Session created successfully",
       });
+      
       setFormData({
         client_id: "",
         scheduled_date: "",
@@ -187,6 +217,10 @@ const SessionPage = () => {
         session_type: "individual",
         location: "",
         meeting_link: "",
+        is_recurring: false,
+        recurrence_type: "weekly",
+        recurrence_count: 4,
+        custom_interval_days: 7,
       });
       setIsOpen(false);
       fetchSessions();
@@ -269,7 +303,7 @@ const SessionPage = () => {
       >
         {/* Header */}
         <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-8 py-6">
-          <div className="flex items-center justify-between">
+          <div className="flex items-center justify-between mb-4">
             <div>
               <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
                 Sessions
@@ -285,11 +319,11 @@ const SessionPage = () => {
                   New Session
                 </Button>
               </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px]">
+              <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Schedule a New Session</DialogTitle>
                   <DialogDescription>
-                    Create a new therapy session with a client
+                    Create single or recurring therapy sessions with a client
                   </DialogDescription>
                 </DialogHeader>
                 <form onSubmit={handleCreateSession} className="space-y-4">
@@ -395,15 +429,126 @@ const SessionPage = () => {
                     </p>
                   </div>
 
+                  {/* Recurring Session Options */}
+                  <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
+                    <div className="flex items-center space-x-2 mb-3">
+                      <input
+                        type="checkbox"
+                        id="is-recurring"
+                        checked={formData.is_recurring}
+                        onChange={(e) =>
+                          setFormData({ ...formData, is_recurring: e.target.checked })
+                        }
+                        className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                      />
+                      <Label htmlFor="is-recurring" className="cursor-pointer font-semibold">
+                        Schedule Recurring Sessions
+                      </Label>
+                    </div>
+
+                    {formData.is_recurring && (
+                      <div className="space-y-3 pl-6 border-l-2 border-blue-300 dark:border-blue-700">
+                        <div className="space-y-2">
+                          <Label htmlFor="recurrence-type">Recurrence Pattern</Label>
+                          <select
+                            id="recurrence-type"
+                            value={formData.recurrence_type}
+                            onChange={(e) =>
+                              setFormData({ 
+                                ...formData, 
+                                recurrence_type: e.target.value as "weekly" | "monthly" | "custom" 
+                              })
+                            }
+                            className="w-full px-3 py-2 border border-slate-300 dark:border-slate-700 rounded-lg bg-white dark:bg-slate-800 text-slate-900 dark:text-white"
+                          >
+                            <option value="weekly">Weekly (Every 7 days)</option>
+                            <option value="monthly">Monthly (Every 30 days)</option>
+                            <option value="custom">Custom Interval</option>
+                          </select>
+                        </div>
+
+                        {formData.recurrence_type === "custom" && (
+                          <div className="space-y-2">
+                            <Label htmlFor="custom-interval">Interval (Days)</Label>
+                            <Input
+                              id="custom-interval"
+                              type="number"
+                              min="1"
+                              max="90"
+                              value={formData.custom_interval_days}
+                              onChange={(e) =>
+                                setFormData({ 
+                                  ...formData, 
+                                  custom_interval_days: parseInt(e.target.value) || 7 
+                                })
+                              }
+                              className="border-slate-300 dark:border-slate-700"
+                            />
+                          </div>
+                        )}
+
+                        <div className="space-y-2">
+                          <Label htmlFor="recurrence-count">Number of Sessions</Label>
+                          <Input
+                            id="recurrence-count"
+                            type="number"
+                            min="2"
+                            max="52"
+                            value={formData.recurrence_count}
+                            onChange={(e) =>
+                              setFormData({ 
+                                ...formData, 
+                                recurrence_count: parseInt(e.target.value) || 4 
+                              })
+                            }
+                            className="border-slate-300 dark:border-slate-700"
+                          />
+                          <p className="text-xs text-slate-500 dark:text-slate-400">
+                            {formData.recurrence_type === "weekly" 
+                              ? `📅 Creates ${formData.recurrence_count} weekly sessions`
+                              : formData.recurrence_type === "monthly"
+                              ? `📅 Creates ${formData.recurrence_count} monthly sessions`
+                              : `📅 Creates ${formData.recurrence_count} sessions every ${formData.custom_interval_days} days`
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
                   <Button
                     type="submit"
                     className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
                   >
-                    Create Session
+                    {formData.is_recurring 
+                      ? `Create ${formData.recurrence_count} Sessions`
+                      : "Create Session"
+                    }
                   </Button>
                 </form>
               </DialogContent>
             </Dialog>
+          </div>
+          
+          {/* Search Bar */}
+          <div className="relative mt-4">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+            <Input
+              placeholder="Search sessions by client name..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700"
+            />
+            {searchTerm && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute right-2 top-1/2 -translate-y-1/2 h-7 px-2 text-slate-400 hover:text-slate-600"
+                onClick={() => setSearchTerm("")}
+              >
+                Clear
+              </Button>
+            )}
           </div>
         </div>
 
@@ -425,9 +570,19 @@ const SessionPage = () => {
                 Start by creating your first therapy session
               </p>
             </Card>
+          ) : filteredSessions.length === 0 ? (
+            <Card className="p-12 text-center border-dashed">
+              <Search className="h-12 w-12 text-slate-400 mx-auto mb-4" />
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                No Sessions Found
+              </h3>
+              <p className="text-slate-600 dark:text-slate-400">
+                No sessions match "{searchTerm}". Try a different search term.
+              </p>
+            </Card>
           ) : (
             <div className="grid gap-4">
-              {sessions
+              {filteredSessions
                 .sort((a, b) => {
                   // Sort by date and time in chronological order (earliest first)
                   const dateA = new Date(a.scheduled_date).getTime();

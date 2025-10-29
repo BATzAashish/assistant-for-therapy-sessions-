@@ -413,11 +413,16 @@ const VideoConference = ({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
-    recognition.lang = 'en-US';
+    
+    // Use English as primary language - Chrome will auto-detect Hindi/English mix
+    // Setting to 'en-IN' (Indian English) helps browser understand Hinglish better
+    recognition.lang = 'en-IN';
+    
+    console.log(`[Speech Recognition] Starting bilingual mode: en-IN (Auto-detects Hindi/English mix)`);
     
     recognition.onstart = () => {
       setIsTranscribing(true);
-      console.log("Speech recognition started");
+      console.log(`[Speech Recognition] Started successfully - Bilingual recognition active`);
     };
     
     recognition.onresult = (event: any) => {
@@ -433,8 +438,15 @@ const VideoConference = ({
         }
       }
       
+      // Log interim results for debugging
+      if (interimTranscript) {
+        console.log(`[Speech Recognition] Interim:`, interimTranscript);
+      }
+      
       // Send final transcript to backend
       if (finalTranscript) {
+        console.log(`[Speech Recognition] Final:`, finalTranscript.trim());
+        
         // Send to backend via socket (don't add to local state yet)
         // The backend will broadcast it back to all participants including us
         const socket = socketRef.current;
@@ -449,14 +461,26 @@ const VideoConference = ({
     };
     
     recognition.onerror = (event: any) => {
-      console.error("Speech recognition error:", event.error);
+      console.error(`[Speech Recognition] Error (${recognition.lang}):`, event.error, event);
+      
       if (event.error === 'no-speech') {
         // Restart if no speech detected
+        console.log("[Speech Recognition] No speech detected, restarting...");
         setTimeout(() => {
           if (recognitionRef.current) {
             recognitionRef.current.start();
           }
         }, 1000);
+      } else if (event.error === 'not-allowed') {
+        console.error("[Speech Recognition] Microphone permission denied");
+        setIsTranscribing(false);
+      } else if (event.error === 'language-not-supported') {
+        console.error(`[Speech Recognition] Language ${recognition.lang} not supported by browser`);
+        toast({
+          title: "Language Not Supported",
+          description: "Your browser may not support bilingual speech recognition. Try using Google Chrome.",
+          variant: "destructive",
+        });
       }
     };
     
@@ -527,7 +551,8 @@ const VideoConference = ({
             Authorization: `Bearer ${localStorage.getItem("token")}`,
           },
           body: JSON.stringify({
-            transcription_data: transcriptionData
+            transcription_data: transcriptionData,
+            language: 'en'  // Always generate AI summary in English
           })
         }
       );

@@ -203,6 +203,7 @@ def end_session(session_id):
         # Get any transcription data from the request body
         data = request.get_json() or {}
         transcription_data = data.get('transcription_data', [])
+        language = data.get('language', 'en')  # Get language preference, default to English
         
         # End the session
         if session_model.end_session(session_id):
@@ -247,13 +248,22 @@ def end_session(session_id):
                     print(f"[AUTO-NOTES] Client name: {client_name}")
                     
                     # Generate summary
-                    print(f"[AUTO-NOTES] Generating summary with {summary_service.__class__.__name__}...")
+                    print(f"[AUTO-NOTES] Generating summary with {summary_service.__class__.__name__} in {language} language...")
+                    print(f"[RAG] Including context from past sessions for client {str(session['client_id'])}")
                     summary_result = summary_service.generate_session_summary(
                         transcript=transcript_text,
                         session_type=session.get('session_type', 'individual'),
-                        client_name=client_name
+                        client_name=client_name,
+                        language=language,
+                        client_id=str(session['client_id']),
+                        db=current_app.db
                     )
                     print(f"[AUTO-NOTES] Summary result success: {summary_result.get('success')}")
+                    
+                    # Log error if summary generation failed
+                    if not summary_result.get('success'):
+                        error_msg = summary_result.get('error', 'Unknown error')
+                        print(f"[AUTO-NOTES] ERROR: Summary generation failed - {error_msg}")
                     
                     if summary_result['success']:
                         # Extract key points
@@ -308,14 +318,25 @@ def end_session(session_id):
 {key_points.get('next_session_focus', 'To be determined based on client progress')}
 """
                         
-                        # Save the note
+                        # Save the note with separate fields for PDF export
                         note_model = Note(current_app.db)
+                        
+                        # Extract action items from key points
+                        action_items_list = []
+                        if key_points_result.get('success'):
+                            key_points = key_points_result['key_points']
+                            action_items_list = key_points.get('action_items', [])
+                        
                         note_id = note_model.create_note(
                             therapist_id=current_user_id,
                             client_id=str(session['client_id']),
                             session_id=session_id,
                             content=note_content,
-                            note_type='session'
+                            note_type='session',
+                            ai_summary=summary_result['summary'],
+                            transcript=transcript_text,
+                            action_items=action_items_list,
+                            session_date=session.get('scheduled_date')
                         )
                         note_created = True
                         print(f"[AUTO-NOTES] Note created successfully with ID: {note_id}")

@@ -15,7 +15,8 @@ class Note:
         self.collection.create_index('client_id')
         self.collection.create_index('therapist_id')
     
-    def create_note(self, therapist_id, client_id, session_id, content, note_type='session'):
+    def create_note(self, therapist_id, client_id, session_id, content, note_type='session', 
+                    ai_summary=None, transcript=None, action_items=None, session_date=None):
         """Create a new note"""
         note_data = {
             'therapist_id': ObjectId(therapist_id),
@@ -27,6 +28,16 @@ class Note:
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()
         }
+        
+        # Add optional fields for PDF export
+        if ai_summary:
+            note_data['ai_summary'] = ai_summary
+        if transcript:
+            note_data['transcript'] = transcript
+        if action_items:
+            note_data['action_items'] = action_items
+        if session_date:
+            note_data['session_date'] = session_date
         
         result = self.collection.insert_one(note_data)
         return str(result.inserted_id)
@@ -118,6 +129,10 @@ class Note:
             'content': note['content'],
             'note_type': note.get('note_type'),
             'is_private': note.get('is_private', True),
+            'ai_summary': note.get('ai_summary'),
+            'transcript': note.get('transcript'),
+            'action_items': note.get('action_items'),
+            'session_date': note.get('session_date'),
             'created_at': note['created_at'].isoformat() if note.get('created_at') else None,
             'updated_at': note['updated_at'].isoformat() if note.get('updated_at') else None
         }

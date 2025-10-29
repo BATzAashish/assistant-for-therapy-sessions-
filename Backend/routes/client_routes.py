@@ -149,6 +149,71 @@ def delete_client(client_id):
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@client_bp.route('/<client_id>/status', methods=['PATCH'])
+@jwt_required()
+def update_client_status(client_id):
+    """Update client status (active/inactive)"""
+    try:
+        current_user_id = get_jwt_identity()
+        data = request.get_json()
+        
+        if 'status' not in data:
+            return jsonify({'error': 'Status field is required'}), 400
+        
+        if data['status'] not in ['active', 'inactive']:
+            return jsonify({'error': 'Status must be either "active" or "inactive"'}), 400
+        
+        client_model = Client(current_app.db)
+        client = client_model.find_by_id(client_id)
+        
+        if not client:
+            return jsonify({'error': 'Client not found'}), 404
+        
+        # Verify the client belongs to the current therapist
+        if str(client['therapist_id']) != current_user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # If setting to inactive, delete all future scheduled sessions
+        deleted_sessions_count = 0
+        if data['status'] == 'inactive':
+            from models.session import Session
+            from datetime import datetime
+            
+            session_model = Session(current_app.db)
+            
+            # Find all future scheduled sessions for this client
+            future_sessions = list(current_app.db.sessions.find({
+                'client_id': ObjectId(client_id),
+                'status': 'scheduled',
+                'scheduled_date': {'$gte': datetime.utcnow()}
+            }))
+            
+            # Delete each future session
+            for session in future_sessions:
+                try:
+                    session_model.delete_session(str(session['_id']))
+                    deleted_sessions_count += 1
+                except Exception as e:
+                    print(f"Error deleting session {session['_id']}: {e}")
+        
+        if client_model.update_client(client_id, {'status': data['status']}):
+            updated_client = client_model.find_by_id(client_id)
+            
+            response_message = f'Client status updated to {data["status"]}'
+            if deleted_sessions_count > 0:
+                response_message += f'. {deleted_sessions_count} future session(s) cancelled'
+            
+            return jsonify({
+                'message': response_message,
+                'deleted_sessions': deleted_sessions_count,
+                'client': client_model.to_dict(updated_client)
+            }), 200
+        else:
+            return jsonify({'error': 'Failed to update status'}), 500
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 @client_bp.route('/<client_id>/details', methods=['GET'])
 @jwt_required()
 def get_client_details(client_id):

@@ -57,19 +57,72 @@ class SummaryService:
         """Check if summary service is available"""
         return self.client is not None
     
+    def get_client_context(self, db, client_id: str, limit: int = 3) -> tuple:
+        """
+        Fetch recent session notes for RAG context
+        
+        Args:
+            db: Database connection
+            client_id: Client's ID
+            limit: Number of recent notes to fetch
+            
+        Returns:
+            Tuple of (context_string, session_count)
+            - context_string: Formatted context with past session summaries
+            - session_count: Number of previous sessions found
+        """
+        try:
+            from bson import ObjectId
+            
+            # Fetch recent notes for this client
+            notes = list(db.notes.find({
+                'client_id': ObjectId(client_id)
+            }).sort('created_at', -1).limit(limit))
+            
+            session_count = len(notes)
+            
+            if session_count == 0:
+                return "", 0
+            
+            context = "\n### PAST SESSION CONTEXT ###\n"
+            context += f"This client has {session_count} previous session(s) recorded:\n\n"
+            
+            for i, note in enumerate(reversed(notes), 1):
+                session_date = note.get('session_date', 'Unknown date')
+                ai_summary = note.get('ai_summary', note.get('content', ''))
+                
+                # Extract key points from summary
+                context += f"Previous Session {i} ({session_date}):\n"
+                # Take first 400 chars of summary for better context
+                summary_excerpt = ai_summary[:400] + "..." if len(ai_summary) > 400 else ai_summary
+                context += f"{summary_excerpt}\n\n"
+            
+            context += "### END PAST SESSION CONTEXT ###\n\n"
+            return context, session_count
+            
+        except Exception as e:
+            print(f"Error fetching client context: {e}")
+            return "", 0
+    
     def generate_session_summary(
         self, 
         transcript: str, 
         session_type: str = "individual",
-        client_name: Optional[str] = None
+        client_name: Optional[str] = None,
+        language: str = "en",
+        client_id: Optional[str] = None,
+        db = None
     ) -> Dict:
         """
-        Generate a comprehensive summary of a therapy session
+        Generate a comprehensive summary of a therapy session with RAG context
         
         Args:
             transcript: Full transcript of the session
             session_type: Type of session (individual, group, etc.)
             client_name: Name of the client (optional, for personalization)
+            language: Language for the summary ('en' or 'hi')
+            client_id: Client's ID for fetching past context
+            db: Database connection for RAG
             
         Returns:
             Dictionary with summary results
@@ -81,47 +134,122 @@ class SummaryService:
             }
         
         try:
-            # Create a therapy-focused prompt - concise and problem-focused
-            system_prompt = """You are an experienced clinical psychologist writing session notes. 
+            # Fetch client context for RAG
+            client_context = ""
+            session_count = 0
+            if client_id is not None and db is not None:
+                client_context, session_count = self.get_client_context(db, client_id, limit=3)
+                if session_count > 0:
+                    print(f"[RAG] Added context from {session_count} previous session(s)")
+                else:
+                    print(f"[RAG] First session for this client - establishing baseline")
+            
+            # Note: Transcripts may contain mixed Hindi/English (Hinglish)
+            # Always generate summaries in English for consistency
+            print(f"[SUMMARY] Generating summary in English (transcript may contain Hindi/English mix)")
+            
+            # Always use English prompts - AI will understand bilingual transcripts
+            # Adjust based on session count
+            if session_count == 0:
+                # First session - establish baseline
+                system_prompt = """You are an experienced clinical psychologist writing notes for an INITIAL session.
+This is the FIRST session with this client - establish a comprehensive baseline assessment.
+
+IMPORTANT: The transcript may contain mixed Hindi and English (Hinglish). Understand both languages and write your notes ENTIRELY IN ENGLISH.
+
 Create CONCISE but COMPLETE clinical notes following this structure:
 
-**Problems & Concerns Presented:**
-- List the specific issues, complaints, or concerns the client discussed
-- Note any new problems or recurring themes
+**Initial Assessment (First Session):**
+- Primary presenting problems and concerns expressed by client
+- History and duration of issues
+- Client's current life context and circumstances
+- Goals and expectations for therapy
 
 **Clinical Observations:**
-- Client's mood, affect, and emotional state during session
-- Notable behaviors, body language, or verbal patterns
-- Level of engagement and participation
+- Initial presentation: mood, affect, emotional state
+- Communication style and level of engagement
+- Strengths and areas of challenge noted
 
-**Interventions & Discussion:**
+**Initial Impressions & Plan:**
+- Potential diagnoses or areas of concern
+- Recommended therapeutic approach
+- Initial treatment goals
+- Next steps and recommendations
+
+**Initial Action Items:**
+- Preliminary homework for client
+- Areas to observe or track until next session
+
+Keep notes factual and professional. Base everything ONLY on what's in the transcript.
+Use clear, direct English language suitable for clinical records. Total length: 350-550 words."""
+            else:
+                # Subsequent sessions - compare and track progress
+                system_prompt = f"""You are an experienced clinical psychologist writing notes for a FOLLOW-UP session.
+This is session #{session_count + 1} with this client - track progress, changes, and patterns from previous sessions.
+
+IMPORTANT: The transcript may contain mixed Hindi and English (Hinglish). Understand both languages and write your notes ENTIRELY IN ENGLISH.
+
+Create CONCISE but COMPLETE clinical notes following this structure:
+
+**Problems & Concerns Presented Today:**
+- Issues discussed in current session
+- Any new problems or recurring themes
+- Updates from last session
+
+**Progress & Changes Since Last Session:**
+⭐ CRITICAL: Compare against previous sessions and highlight:
+- Improvements and positive changes observed
+- Lack of progress or new challenges
+- Patterns noticed in behavior or outlook
+- Homework/action item completion and outcomes
+- Evolution of client's insight over time
+
+**Clinical Observations:**
+- Mood, affect, and emotional state during session
+- Changes or consistency in behavior patterns
+- Level of engagement and motivation
+
+**Today's Interventions:**
 - Therapeutic approaches or techniques used
-- Key insights or breakthroughs
+- Key insights or breakthroughs achieved
 - Client's response to interventions
 
-**Progress & Changes:**
-- Improvements noted since last session
-- Setbacks or challenges encountered
-- Overall trajectory of treatment
+**Homework & Next Steps:**
+- New assignments and skills to practice
+- Specific goals for next session
 
-**Homework & Action Items:**
-- Specific tasks assigned to client
-- Skills to practice
-- Goals for next session
+Keep notes factual with CLEAR comparisons to previous sessions.
+Base everything on transcript and context provided. Write ENTIRELY IN ENGLISH. Total length: 350-550 words."""
 
-Keep notes factual and professional. Base everything ONLY on what's in the transcript - do not invent details. 
-Use clear, direct language suitable for clinical records. Total length: 300-500 words."""
-
-            user_prompt = f"""Create clinical session notes from this transcript:
+            if session_count == 0:
+                user_prompt = f"""This is the FIRST session with {client_name if client_name else '[Name]'}.
+Create a comprehensive baseline assessment that will form the foundation for future sessions.
 
 Session Type: {session_type}
-Client: {client_name if client_name else '[Name]'}
 
-TRANSCRIPT:
+TRANSCRIPT (may contain Hindi/English mix):
 {transcript}
 
-Generate concise clinical notes based only on what was discussed."""
+Generate detailed initial assessment notes based only on what was discussed.
+Establish clear baseline for future progress tracking.
+WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
+            else:
+                user_prompt = f"""{client_context}This is SESSION #{session_count + 1} with {client_name if client_name else '[Name]'}.
 
+Session Type: {session_type}
+
+TODAY'S TRANSCRIPT (may contain Hindi/English mix):
+{transcript}
+
+Generate clinical notes using past session context provided above.
+Specifically highlight:
+- What has IMPROVED? (progress, positive changes)
+- What has WORSENED or stayed STAGNANT? (setbacks, challenges)
+- What PATTERNS are emerging? (recurring themes, behaviors)
+- How is the client's UNDERSTANDING evolving? (insight development)
+
+WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
+            
             if self.provider == 'gemini':
                 # Use Gemini API
                 full_prompt = f"{system_prompt}\n\n{user_prompt}"
@@ -133,6 +261,8 @@ Generate concise clinical notes based only on what was discussed."""
                     'summary': summary,
                     'model': 'gemini-2.0-flash',
                     'provider': 'gemini',
+                    'session_count': session_count,
+                    'is_first_session': session_count == 0,
                     'tokens_used': None  # Gemini doesn't provide token count in same way
                 }
                 
@@ -154,6 +284,8 @@ Generate concise clinical notes based only on what was discussed."""
                     'summary': summary,
                     'model': response.model,
                     'provider': 'openai',
+                    'session_count': session_count,
+                    'is_first_session': session_count == 0,
                     'tokens_used': response.usage.total_tokens if hasattr(response, 'usage') else None
                 }
             

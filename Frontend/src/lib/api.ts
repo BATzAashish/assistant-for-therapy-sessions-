@@ -109,6 +109,18 @@ export const clientAPI = {
     });
     return handleResponse(response);
   },
+
+  updateStatus: async (id: string, status: string) => {
+    const response = await fetch(`${API_BASE_URL}/clients/${id}/status`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // Session API

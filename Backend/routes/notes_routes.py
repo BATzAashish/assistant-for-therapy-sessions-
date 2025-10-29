@@ -1,8 +1,10 @@
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, send_file
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.note import Note
 from models.client import Client
 from models.session import Session
+from services.pdf_service import PDFExportService
+import io
 
 notes_bp = Blueprint('notes', __name__)
 
@@ -44,6 +46,46 @@ def get_note(note_id):
         return jsonify({
             'note': note_model.to_dict(note, populate_refs=True)
         }), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@notes_bp.route('/<note_id>/export/pdf', methods=['GET'])
+@jwt_required()
+def export_note_pdf(note_id):
+    """Export a note as PDF"""
+    try:
+        current_user_id = get_jwt_identity()
+        note_model = Note(current_app.db)
+        
+        note = note_model.find_by_id(note_id)
+        
+        if not note:
+            return jsonify({'error': 'Note not found'}), 404
+        
+        # Verify the note belongs to the current therapist
+        if str(note['therapist_id']) != current_user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # Convert note to dict with populated references
+        note_data = note_model.to_dict(note, populate_refs=True)
+        
+        # Generate PDF
+        pdf_service = PDFExportService()
+        pdf_bytes = pdf_service.generate_session_pdf(note_data)
+        
+        # Create filename with client name and date
+        client_name = note_data.get('client_id', {}).get('name', 'Unknown')
+        session_date = note_data.get('session_id', {}).get('scheduled_at', '')
+        filename = f"Session_Note_{client_name.replace(' ', '_')}_{session_date[:10] if session_date else 'unknown'}.pdf"
+        
+        # Return PDF file
+        return send_file(
+            io.BytesIO(pdf_bytes),
+            mimetype='application/pdf',
+            as_attachment=True,
+            download_name=filename
+        )
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500

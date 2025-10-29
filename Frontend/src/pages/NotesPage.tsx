@@ -277,11 +277,12 @@ const NotesPage = () => {
       .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-slate-900 dark:text-white mt-8 mb-4 pb-2 border-b-2 border-blue-500">$1</h1>')
       .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-2">$1</h3>')
       
-      // Bold text (**text**)
-      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-slate-900 dark:text-white">$1</strong>')
+      // Bold text (**text**) - with yellow highlight background
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-bold text-slate-900 dark:text-white bg-yellow-100 dark:bg-yellow-900/30 px-1 rounded">$1</strong>')
       
-      // Lists with bullets
-      .replace(/^- (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 mt-1">•</span><span class="flex-1">$1</span></li>')
+      // Lists with bullets (both * and - formats)
+      .replace(/^\* (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 mt-1 font-bold">•</span><span class="flex-1">$1</span></li>')
+      .replace(/^- (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 mt-1 font-bold">•</span><span class="flex-1">$1</span></li>')
       .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 font-semibold min-w-[20px]">$1.</span><span class="flex-1">$2</span></li>')
       
       // Transcript timestamps [00:00]
@@ -521,15 +522,17 @@ const NotesPage = () => {
                                       {formatDate(note.created_at)}
                                     </span>
                                   </div>
-                                  <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-8 w-8 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
-                                    onClick={() => handleDeleteNote(note._id)}
-                                    title="Delete note"
-                                  >
-                                    <Trash2 className="h-4 w-4" />
-                                  </Button>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      variant="ghost"
+                                      size="icon"
+                                      className="h-8 w-8 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
+                                      onClick={() => handleDeleteNote(note._id)}
+                                      title="Delete note"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </Button>
+                                  </div>
                                 </div>
                                 <div 
                                   className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300"

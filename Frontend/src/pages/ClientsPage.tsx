@@ -6,7 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { Search, Plus, Mail, Phone, Calendar, Video } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Search, Plus, Mail, Phone, Calendar, Video, MoreVertical, CheckCircle, XCircle } from "lucide-react";
 import { clientAPI, authAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useSidebar } from "@/contexts/SidebarContext";
@@ -95,6 +101,35 @@ const ClientsPage = () => {
       day: "numeric",
       year: "numeric",
     });
+  };
+
+  const handleStatusChange = async (clientId: string, newStatus: string) => {
+    try {
+      const result = await clientAPI.updateStatus(clientId, newStatus);
+      
+      // Update local state
+      setClients((prev) =>
+        prev.map((c) => (c._id === clientId ? { ...c, status: newStatus } : c))
+      );
+      
+      let description = `Client status changed to ${newStatus}`;
+      
+      // Add info about cancelled sessions if any
+      if (result.deleted_sessions && result.deleted_sessions > 0) {
+        description += `. ${result.deleted_sessions} future session(s) cancelled.`;
+      }
+      
+      toast({
+        title: "Status Updated",
+        description: description,
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update status",
+        variant: "destructive",
+      });
+    }
   };
 
   return (
@@ -190,13 +225,43 @@ const ClientsPage = () => {
                         {getInitials(client.name)}
                       </AvatarFallback>
                     </Avatar>
-                    <Badge
-                      variant={
-                        client.status === "active" ? "default" : "secondary"
-                      }
-                    >
-                      {client.status}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge
+                        variant={
+                          client.status === "active" ? "default" : "secondary"
+                        }
+                        className={
+                          client.status === "active"
+                            ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                            : "bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200"
+                        }
+                      >
+                        {client.status}
+                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8">
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(client._id, "active")}
+                            disabled={client.status === "active"}
+                          >
+                            <CheckCircle className="h-4 w-4 mr-2 text-green-600" />
+                            Mark as Active
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            onClick={() => handleStatusChange(client._id, "inactive")}
+                            disabled={client.status === "inactive"}
+                          >
+                            <XCircle className="h-4 w-4 mr-2 text-gray-600" />
+                            Mark as Inactive
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
                   </div>
 
                   <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
