@@ -267,6 +267,54 @@ const NotesPage = () => {
     });
   };
 
+  const formatNoteContent = (content: string) => {
+    if (!content) return '';
+    
+    // Convert markdown-style formatting to HTML
+    let formatted = content
+      // Headers (## Header)
+      .replace(/^## (.+)$/gm, '<h2 class="text-xl font-bold text-slate-900 dark:text-white mt-6 mb-3 flex items-center gap-2"><span class="w-1 h-6 bg-blue-500 rounded"></span>$1</h2>')
+      .replace(/^# (.+)$/gm, '<h1 class="text-2xl font-bold text-slate-900 dark:text-white mt-8 mb-4 pb-2 border-b-2 border-blue-500">$1</h1>')
+      .replace(/^### (.+)$/gm, '<h3 class="text-lg font-semibold text-slate-800 dark:text-slate-200 mt-4 mb-2">$1</h3>')
+      
+      // Bold text (**text**)
+      .replace(/\*\*(.+?)\*\*/g, '<strong class="font-semibold text-slate-900 dark:text-white">$1</strong>')
+      
+      // Lists with bullets
+      .replace(/^- (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 mt-1">•</span><span class="flex-1">$1</span></li>')
+      .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 font-semibold min-w-[20px]">$1.</span><span class="flex-1">$2</span></li>')
+      
+      // Transcript timestamps [00:00]
+      .replace(/\[(\d{2}:\d{2})\]/g, '<span class="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded text-xs font-mono">⏱️ $1</span>')
+      
+      // Horizontal rules (---)
+      .replace(/^---$/gm, '<hr class="my-6 border-t-2 border-slate-200 dark:border-slate-700" />')
+      
+      // Paragraphs (double line breaks)
+      .replace(/\n\n/g, '</p><p class="mb-4 leading-relaxed">')
+      
+      // Single line breaks
+      .replace(/\n/g, '<br />');
+    
+    // Wrap lists in ul tags
+    formatted = formatted.replace(/(<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500[^>]*>•<\/span>.*?<\/li>(\s|<br \/>)*)+/g, (match) => {
+      return '<ul class="space-y-1 mb-4">' + match.replace(/<br \/>/g, '') + '</ul>';
+    });
+    
+    formatted = formatted.replace(/(<li class="ml-4 mb-2 flex items-start gap-2"><span class="text-blue-500 font-semibold[^>]*>\d+\.<\/span>.*?<\/li>(\s|<br \/>)*)+/g, (match) => {
+      return '<ol class="space-y-1 mb-4">' + match.replace(/<br \/>/g, '') + '</ol>';
+    });
+    
+    // Wrap everything in a paragraph if it doesn't start with a tag
+    if (!formatted.startsWith('<')) {
+      formatted = '<p class="mb-4 leading-relaxed">' + formatted + '</p>';
+    } else {
+      formatted = '<div>' + formatted + '</div>';
+    }
+    
+    return formatted;
+  };
+
   return (
     <div className="flex h-screen bg-slate-50 dark:bg-slate-950">
       <Sidebar />
@@ -459,31 +507,36 @@ const NotesPage = () => {
                         <AccordionContent>
                           <div className="space-y-4 mt-4">
                             {sessionData.notes.map((note: Note) => (
-                              <Card key={note._id} className="p-4 bg-slate-50 dark:bg-slate-800/50">
-                                <div className="flex items-start justify-between mb-2">
-                                  <div className="flex items-center gap-2">
-                                    <MessageSquare className="h-4 w-4 text-slate-400" />
+                              <Card key={note._id} className="p-6 bg-gradient-to-br from-white to-slate-50 dark:from-slate-800 dark:to-slate-800/50 border-l-4 border-l-blue-500 shadow-sm hover:shadow-md transition-shadow">
+                                <div className="flex items-start justify-between mb-4">
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <MessageSquare className="h-4 w-4 text-blue-500" />
                                     {note.type && (
                                       <Badge className={`${getNoteTypeColor(note.type)} capitalize text-xs`}>
                                         {note.type}
                                       </Badge>
                                     )}
-                                    <span className="text-xs text-slate-500 dark:text-slate-400">
+                                    <span className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                                      <Calendar className="h-3 w-3" />
                                       {formatDate(note.created_at)}
                                     </span>
                                   </div>
                                   <Button
                                     variant="ghost"
                                     size="icon"
-                                    className="h-8 w-8 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                    className="h-8 w-8 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950 transition-colors"
                                     onClick={() => handleDeleteNote(note._id)}
+                                    title="Delete note"
                                   >
                                     <Trash2 className="h-4 w-4" />
                                   </Button>
                                 </div>
-                                <p className="text-slate-700 dark:text-slate-300 whitespace-pre-wrap break-words">
-                                  {note.content}
-                                </p>
+                                <div 
+                                  className="prose prose-sm dark:prose-invert max-w-none text-slate-700 dark:text-slate-300"
+                                  dangerouslySetInnerHTML={{
+                                    __html: formatNoteContent(note.content)
+                                  }}
+                                />
                               </Card>
                             ))}
                           </div>
