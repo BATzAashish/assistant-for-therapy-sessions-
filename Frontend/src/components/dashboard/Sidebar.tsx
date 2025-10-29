@@ -7,7 +7,6 @@ import {
   UserPlus, 
   Video,
   FileText,
-  Settings,
   LogOut,
   Brain,
   ChevronLeft,
@@ -173,15 +172,6 @@ const Sidebar = ({ user }: SidebarProps) => {
               {!collapsed && <span className="ml-3">Dark Mode</span>}
             </>
           )}
-        </Button>
-        <Button
-          variant="ghost"
-          className={`w-full h-10 ${collapsed ? "px-0" : "px-4"} justify-center ${collapsed ? "" : "justify-start"} text-slate-600 dark:text-slate-400`}
-          onClick={() => navigate("/dashboard/settings")}
-          title={collapsed ? "Settings" : ""}
-        >
-          <Settings className="h-5 w-5" />
-          {!collapsed && <span className="ml-3">Settings</span>}
         </Button>
         <Button
           variant="ghost"

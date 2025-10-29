@@ -427,7 +427,14 @@ const SessionPage = () => {
             </Card>
           ) : (
             <div className="grid gap-4">
-              {sessions.map((session) => (
+              {sessions
+                .sort((a, b) => {
+                  // Sort by date and time in chronological order (earliest first)
+                  const dateA = new Date(a.scheduled_date).getTime();
+                  const dateB = new Date(b.scheduled_date).getTime();
+                  return dateA - dateB;
+                })
+                .map((session) => (
                 <Card
                   key={session._id}
                   className="p-6 hover:shadow-lg transition-shadow duration-200"

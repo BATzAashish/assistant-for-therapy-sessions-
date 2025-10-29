@@ -76,10 +76,17 @@ const NotesPage = () => {
   }, []);
 
   useEffect(() => {
+    // Sort notes by created date (chronological order - earliest first)
+    const sortedNotes = [...notes].sort((a, b) => {
+      const dateA = new Date(a.created_at).getTime();
+      const dateB = new Date(b.created_at).getTime();
+      return dateA - dateB;
+    });
+    
     // Group notes by client and session
     const grouped: any = {};
     
-    notes.forEach((note) => {
+    sortedNotes.forEach((note) => {
       const clientId = note.client_id?._id;
       const clientName = note.client_id?.name || "Unknown Client";
       const sessionId = note.session_id?._id || "no-session";
@@ -425,7 +432,16 @@ const NotesPage = () => {
                   </div>
 
                   <Accordion type="multiple" className="w-full">
-                    {Object.entries(clientData.sessions).map(([sessionId, sessionData]: [string, any], index) => (
+                    {Object.entries(clientData.sessions)
+                      .sort(([, sessionDataA]: [string, any], [, sessionDataB]: [string, any]) => {
+                        // Sort sessions by date (chronological order - earliest first)
+                        if (!sessionDataA.sessionDate) return 1;
+                        if (!sessionDataB.sessionDate) return -1;
+                        const dateA = new Date(sessionDataA.sessionDate).getTime();
+                        const dateB = new Date(sessionDataB.sessionDate).getTime();
+                        return dateA - dateB;
+                      })
+                      .map(([sessionId, sessionData]: [string, any], index) => (
                       <AccordionItem key={sessionId} value={sessionId}>
                         <AccordionTrigger className="hover:no-underline">
                           <div className="flex items-center gap-3 text-left">

@@ -8,6 +8,7 @@ import WelcomeBookAnimation from "@/components/WelcomeBookAnimation";
 import AnimatedSteps from "@/components/AnimatedSteps";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { MarqueeTestimonials } from "@/components/ui/marquee-testimonials";
+import { GlowingEffect } from "@/components/ui/glowing-effect";
 import { useState, useRef } from "react";
 
 const Index = () => {
@@ -121,12 +122,15 @@ const Index = () => {
           </div>
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-8">
             {features.map((feature, index) => (
-              <Card key={index} className="p-6 space-y-4 hover:shadow-lg transition-shadow">
-                <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <feature.icon className="w-6 h-6 text-primary" />
+              <Card key={index} className="relative p-6 space-y-4 hover:shadow-2xl transition-all duration-500 overflow-hidden group">
+                <GlowingEffect />
+                <div className="relative z-10">
+                  <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform duration-300">
+                    <feature.icon className="w-6 h-6 text-primary" />
+                  </div>
+                  <h3 className="text-xl font-semibold text-foreground mb-2">{feature.title}</h3>
+                  <p className="text-muted-foreground">{feature.description}</p>
                 </div>
-                <h3 className="text-xl font-semibold text-foreground">{feature.title}</h3>
-                <p className="text-muted-foreground">{feature.description}</p>
               </Card>
             ))}
           </div>
