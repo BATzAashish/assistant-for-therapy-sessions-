@@ -27,6 +27,7 @@ const VideoSessionPage = () => {
       
       // Get current user
       const userData = await authAPI.getCurrentUser();
+      console.log('[VideoSessionPage] Loaded user data:', userData.user);
       setUser(userData.user);
       
       // Get session details
@@ -102,9 +103,24 @@ const VideoSessionPage = () => {
     );
   }
   
-  // Determine user type (therapist or client)
-  const userType = user?.role === "therapist" ? "therapist" : "client";
+  // Determine user type based on session ownership
+  // If user is the therapist who created the session, they are "therapist"
+  // Otherwise, they are "client" (the person being analyzed)
+  // Check both _id and id fields (user object might use either)
+  const userId = user?._id || user?.id;
+  const isSessionTherapist = session?.therapist_id === userId;
+  const userType = isSessionTherapist ? "therapist" : "client";
   const userName = user?.full_name || user?.username || "User";
+  
+  console.log('[VideoSessionPage] User type determination:', {
+    userId: userId,
+    userIdField: user?._id,
+    userIdAlt: user?.id,
+    sessionTherapistId: session?.therapist_id,
+    isSessionTherapist,
+    userType,
+    fullUserObject: user
+  });
   
   return (
     <VideoConference

@@ -1,7 +1,7 @@
 """
 Summary Service
 Handles automatic summarization of therapy session transcripts
-Supports both Google Gemini and OpenAI APIs
+Supports Google Gemini, Groq, and OpenAI APIs with automatic fallback
 """
 import os
 from typing import Dict, Optional
@@ -13,6 +13,7 @@ class SummaryService:
         """Initialize summary service with available AI provider"""
         self.provider = os.environ.get('AI_PROVIDER', 'gemini').lower()
         self.gemini_key = os.environ.get('GEMINI_API_KEY')
+        self.groq_key = os.environ.get('GROQ_API_KEY')
         self.openai_key = os.environ.get('OPENAI_API_KEY')
         self.client = None
         
@@ -27,6 +28,14 @@ class SummaryService:
             except ImportError:
                 print("Warning: google-generativeai not installed. Install with: pip install google-generativeai")
                 self.client = None
+        elif self.provider == 'groq' and self.groq_key:
+            try:
+                from groq import Groq
+                self.client = Groq(api_key=self.groq_key)
+                self.provider = 'groq'
+            except ImportError:
+                print("Warning: groq not installed. Install with: pip install groq")
+                self.client = None
         elif self.provider == 'openai' and self.openai_key:
             try:
                 from openai import OpenAI
@@ -36,7 +45,7 @@ class SummaryService:
                 print("Warning: openai not installed. Install with: pip install openai")
                 self.client = None
         else:
-            # Try fallback
+            # Try fallback priority: Gemini -> Groq
             if self.gemini_key:
                 try:
                     import google.generativeai as genai
@@ -45,11 +54,11 @@ class SummaryService:
                     self.provider = 'gemini'
                 except:
                     pass
-            elif self.openai_key:
+            elif self.groq_key:
                 try:
-                    from openai import OpenAI
-                    self.client = OpenAI(api_key=self.openai_key)
-                    self.provider = 'openai'
+                    from groq import Groq
+                    self.client = Groq(api_key=self.groq_key)
+                    self.provider = 'groq'
                 except:
                     pass
     
@@ -348,49 +357,157 @@ Specifically highlight:
 
 WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
             
-            if self.provider == 'gemini':
-                # Use Gemini API
-                full_prompt = f"{system_prompt}\n\n{user_prompt}"
-                response = self.client.generate_content(full_prompt)
-                summary = response.text
+            # Try primary provider first, then fallback
+            try:
+                if self.provider == 'gemini':
+                    # Use Gemini API
+                    full_prompt = f"{system_prompt}\n\n{user_prompt}"
+                    response = self.client.generate_content(full_prompt)
+                    summary = response.text
+                    
+                    return {
+                        'success': True,
+                        'summary': summary,
+                        'model': 'gemini-2.0-flash',
+                        'provider': 'gemini',
+                        'session_count': session_count,
+                        'is_first_session': session_count == 0,
+                        'tokens_used': None
+                    }
                 
-                return {
-                    'success': True,
-                    'summary': summary,
-                    'model': 'gemini-2.0-flash',
-                    'provider': 'gemini',
-                    'session_count': session_count,
-                    'is_first_session': session_count == 0,
-                    'tokens_used': None  # Gemini doesn't provide token count in same way
-                }
+                elif self.provider == 'groq':
+                    # Use Groq API (OpenAI-compatible)
+                    response = self.client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",  # Fast and free
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=2000
+                    )
+                    
+                    summary = response.choices[0].message.content
+                    
+                    return {
+                        'success': True,
+                        'summary': summary,
+                        'model': response.model,
+                        'provider': 'groq',
+                        'session_count': session_count,
+                        'is_first_session': session_count == 0,
+                        'tokens_used': response.usage.total_tokens if hasattr(response, 'usage') else None
+                    }
+                    
+                else:  # OpenAI
+                    response = self.client.chat.completions.create(
+                        model="gpt-4o-mini",
+                        messages=[
+                            {"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_prompt}
+                        ],
+                        temperature=0.7,
+                        max_tokens=2000
+                    )
+                    
+                    summary = response.choices[0].message.content
+                    
+                    return {
+                        'success': True,
+                        'summary': summary,
+                        'model': response.model,
+                        'provider': 'openai',
+                        'session_count': session_count,
+                        'is_first_session': session_count == 0,
+                        'tokens_used': response.usage.total_tokens if hasattr(response, 'usage') else None
+                    }
+                    
+            except Exception as primary_error:
+                # Try fallback: Gemini -> Groq
+                print(f"[SUMMARY] Primary provider ({self.provider}) failed: {str(primary_error)}")
+                print(f"[SUMMARY] Attempting fallback...")
                 
-            else:  # OpenAI
-                response = self.client.chat.completions.create(
-                    model="gpt-4o-mini",
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": user_prompt}
-                    ],
-                    temperature=0.7,
-                    max_tokens=2000
-                )
-                
-                summary = response.choices[0].message.content
-                
-                return {
-                    'success': True,
-                    'summary': summary,
-                    'model': response.model,
-                    'provider': 'openai',
-                    'session_count': session_count,
-                    'is_first_session': session_count == 0,
-                    'tokens_used': response.usage.total_tokens if hasattr(response, 'usage') else None
-                }
+                # Try Groq if primary was Gemini
+                if self.groq_key and self.provider == 'gemini':
+                    try:
+                        from groq import Groq
+                        groq_client = Groq(api_key=self.groq_key)
+                        
+                        response = groq_client.chat.completions.create(
+                            model="llama-3.3-70b-versatile",
+                            messages=[
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt}
+                            ],
+                            temperature=0.7,
+                            max_tokens=2000
+                        )
+                        
+                        summary = response.choices[0].message.content
+                        print(f"[SUMMARY] ✓ Fallback to Groq successful")
+                        
+                        return {
+                            'success': True,
+                            'summary': summary,
+                            'model': response.model,
+                            'provider': 'groq (fallback)',
+                            'session_count': session_count,
+                            'is_first_session': session_count == 0,
+                            'tokens_used': response.usage.total_tokens if hasattr(response, 'usage') else None
+                        }
+                    except Exception as groq_error:
+                        print(f"[SUMMARY] Groq fallback also failed: {str(groq_error)}")
+                        # Don't raise - let it fall through to outer exception handler
+                        error_message = f'All providers failed. Primary ({self.provider}): {str(primary_error)}, Groq fallback: {str(groq_error)}'
+                        return {
+                            'success': False,
+                            'error': error_message
+                        }
+                        
+                # Try Gemini if primary was Groq
+                elif self.gemini_key and self.provider == 'groq':
+                    # Fallback to Gemini
+                    try:
+                        import google.generativeai as genai
+                        genai.configure(api_key=self.gemini_key)
+                        gemini_client = genai.GenerativeModel('gemini-2.0-flash')
+                        
+                        full_prompt = f"{system_prompt}\n\n{user_prompt}"
+                        response = gemini_client.generate_content(full_prompt)
+                        summary = response.text
+                        print(f"[SUMMARY] ✓ Fallback to Gemini successful")
+                        
+                        return {
+                            'success': True,
+                            'summary': summary,
+                            'model': 'gemini-2.0-flash',
+                            'provider': 'gemini (fallback)',
+                            'session_count': session_count,
+                            'is_first_session': session_count == 0,
+                            'tokens_used': None
+                        }
+                    except Exception as fallback_error:
+                        print(f"[SUMMARY] Fallback to Gemini also failed: {str(fallback_error)}")
+                        # Don't raise - return error dict instead
+                        error_message = f'All providers failed. Primary ({self.provider}): {str(primary_error)}, Gemini fallback: {str(fallback_error)}'
+                        return {
+                            'success': False,
+                            'error': error_message
+                        }
+                else:
+                    # No fallback available
+                    error_message = f'Primary provider failed and no fallback configured: {str(primary_error)}'
+                    return {
+                        'success': False,
+                        'error': error_message
+                    }
             
         except Exception as e:
+            error_message = f'Summary generation failed: {str(e)}'
+            print(f"[SUMMARY] ERROR: {error_message}")
             return {
                 'success': False,
-                'error': f'Summary generation failed: {str(e)}'
+                'error': error_message
             }
     
     def generate_quick_summary(self, transcript: str, max_length: int = 200) -> Dict:

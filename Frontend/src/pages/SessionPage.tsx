@@ -61,6 +61,7 @@ const SessionPage = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [loading, setLoading] = useState(true);
   const [isOpen, setIsOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
   const [formData, setFormData] = useState({
     client_id: searchParams.get("client") || "",
@@ -129,6 +130,13 @@ const SessionPage = () => {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Prevent double submissions
+    if (submitting) {
+      console.log("⚠️ Already submitting, ignoring duplicate request");
+      return;
+    }
+    
     console.log("🟢 Form Data:", formData);
     console.log("🟢 Available Clients:", clients.map(c => ({ id: c._id, name: c.name })));
     
@@ -140,6 +148,8 @@ const SessionPage = () => {
       });
       return;
     }
+    
+    setSubmitting(true);
 
     try {
       const selectedClient = clients.find(c => c._id === formData.client_id);
@@ -196,10 +206,18 @@ const SessionPage = () => {
       const createdSessions = [];
       for (const sessionData of sessionsToCreate) {
         try {
+          console.log(`📤 Creating session for ${new Date(sessionData.scheduled_date).toLocaleString()}`);
           const result = await sessionAPI.create(sessionData);
-          createdSessions.push(result);
+          
+          // Check if it was a duplicate (status 200 vs 201)
+          if (result.message === 'Session already exists') {
+            console.log('⚠️ Duplicate session detected by backend, skipping');
+          } else {
+            createdSessions.push(result);
+            console.log('✅ Session created successfully');
+          }
         } catch (error) {
-          console.error("Failed to create session:", error);
+          console.error("❌ Failed to create session:", error);
         }
       }
       
@@ -230,6 +248,8 @@ const SessionPage = () => {
         description: error.message || "Failed to create session",
         variant: "destructive",
       });
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -518,12 +538,16 @@ const SessionPage = () => {
 
                   <Button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white"
+                    disabled={submitting}
+                    className="w-full bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {formData.is_recurring 
-                      ? `Create ${formData.recurrence_count} Sessions`
-                      : "Create Session"
-                    }
+                    {submitting ? (
+                      "Creating..."
+                    ) : formData.is_recurring ? (
+                      `Create ${formData.recurrence_count} Sessions`
+                    ) : (
+                      "Create Session"
+                    )}
                   </Button>
                 </form>
               </DialogContent>

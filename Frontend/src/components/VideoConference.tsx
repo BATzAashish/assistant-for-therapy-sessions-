@@ -12,8 +12,11 @@ import {
   Users,
   Activity,
   MessageSquare,
+  Maximize2,
+  Minimize2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import EmotionMonitor from "@/components/dashboard/EmotionMonitor";
 
 interface VideoConferenceProps {
   sessionId: string;
@@ -69,6 +72,8 @@ const VideoConference = ({
   const [transcript, setTranscript] = useState<TranscriptSegment[]>([]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [showTranscript, setShowTranscript] = useState(true);
+  const [isExpandedLayout, setIsExpandedLayout] = useState(false);
+  const [useMockData, setUseMockData] = useState(true);
   
   // WebRTC Configuration
   const iceServers = {
@@ -85,6 +90,27 @@ const VideoConference = ({
       cleanup();
     };
   }, []);
+  
+  // Ensure local stream stays attached to video element even when layout changes
+  useEffect(() => {
+    const localVideo = localVideoRef.current;
+    const localStream = localStreamRef.current;
+    
+    if (localVideo && localStream && localVideo.srcObject !== localStream) {
+      console.log('[VideoConference] Re-attaching local stream to video element');
+      localVideo.srcObject = localStream;
+      localVideo.play().catch(e => console.error('Error playing video:', e));
+    }
+  }, [isExpandedLayout]); // Re-attach when layout changes
+  
+  // Ensure remote stream stays attached to video element even when layout changes
+  useEffect(() => {
+    const remoteVideo = remoteVideoRef.current;
+    
+    if (remoteVideo && remoteVideo.srcObject) {
+      console.log('[VideoConference] Remote video has stream');
+    }
+  }, [isExpandedLayout]);
   
   const initializeConnection = async () => {
     try {
@@ -200,18 +226,30 @@ const VideoConference = ({
 
       const stream = await Promise.race([mediaPromise, timeoutPromise]) as MediaStream;
       
+      console.log('[VideoConference] Got media stream:', stream.getTracks().map(t => t.kind));
+      
       localStreamRef.current = stream;
       
       const localVideo = localVideoRef.current;
       if (localVideo) {
+        console.log('[VideoConference] Attaching stream to video element');
         localVideo.srcObject = stream;
-        await localVideo.play();
+        
+        // Ensure video plays
+        try {
+          await localVideo.play();
+          console.log('[VideoConference] ✓ Video playing successfully');
+        } catch (playError) {
+          console.error('[VideoConference] Error playing video:', playError);
+          // Try to play without await
+          localVideo.play().catch(e => console.error('Play failed:', e));
+        }
+      } else {
+        console.error('[VideoConference] ✗ Local video ref is null!');
       }
       
-      // Start emotion detection (client side)
-      if (userType === "client") {
-        startEmotionDetection();
-      }
+      // Start emotion detection (therapist analyzes client's video)
+      // Note: Emotion detection of remote video happens after peer connection is established
       
       // Start speech recognition for transcription
       startSpeechRecognition();
@@ -266,6 +304,14 @@ const VideoConference = ({
       const remoteVideo = remoteVideoRef.current;
       if (remoteVideo) {
         remoteVideo.srcObject = event.streams[0];
+        
+        // Start emotion detection when remote video is available (therapist only)
+        if (userType === "therapist") {
+          remoteVideo.onloadeddata = () => {
+            console.log('[VideoConference] Remote video ready, starting emotion detection');
+            startEmotionDetection();
+          };
+        }
       }
     };
     
@@ -350,54 +396,83 @@ const VideoConference = ({
   };
   
   const startEmotionDetection = () => {
+    console.log('[VideoConference] ✓ Starting emotion detection interval');
     emotionIntervalRef.current = setInterval(() => {
+      console.log('[VideoConference] Capturing frame for emotion analysis...');
       captureAndAnalyzeEmotion();
     }, 2000); // Analyze every 2 seconds
   };
   
-  const captureAndAnalyzeEmotion = () => {
-    const localVideo = localVideoRef.current;
+  const captureAndAnalyzeEmotion = async () => {
+    // Therapist analyzes client's video (remote video)
+    const videoToAnalyze = userType === "therapist" ? remoteVideoRef.current : localVideoRef.current;
     const canvas = canvasRef.current;
     
-    if (!localVideo || !canvas) return;
+    if (!videoToAnalyze || !canvas) {
+      console.log('[VideoConference] Missing video element or canvas');
+      return;
+    }
+    
+    if (videoToAnalyze.readyState < 2) {
+      console.log('[VideoConference] Video not ready yet (readyState:', videoToAnalyze.readyState, ')');
+      return;
+    }
     
     const context = canvas.getContext("2d");
-    if (!context) return;
+    if (!context) {
+      console.error('[VideoConference] Failed to get canvas context');
+      return;
+    }
     
     // Draw current video frame to canvas
-    canvas.width = localVideo.videoWidth;
-    canvas.height = localVideo.videoHeight;
-    context.drawImage(localVideo, 0, 0, canvas.width, canvas.height);
+    canvas.width = videoToAnalyze.videoWidth || 640;
+    canvas.height = videoToAnalyze.videoHeight || 480;
+    context.drawImage(videoToAnalyze, 0, 0, canvas.width, canvas.height);
     
     // Convert to base64
     const imageData = canvas.toDataURL("image/jpeg", 0.8);
     
-    // Send to backend for analysis (would need backend endpoint)
-    // For now, simulate with random emotions
-    const emotions = ["happy", "sad", "angry", "neutral", "surprised", "fearful"];
-    const randomEmotion = emotions[Math.floor(Math.random() * emotions.length)];
-    
-    const emotionData: EmotionData = {
-      timestamp: new Date().toISOString(),
-      dominant_emotion: randomEmotion,
-      confidence: Math.random() * 0.3 + 0.7,
-      all_emotions: {
-        happy: Math.random(),
-        sad: Math.random(),
-        angry: Math.random(),
-        neutral: Math.random(),
-        surprised: Math.random(),
-        fearful: Math.random(),
-      },
-    };
-    
-    // Send emotion data through socket
-    const socket = socketRef.current;
-    if (socket) {
-      socket.emit("emotion_data", {
-        session_id: sessionId,
-        emotion_data: emotionData,
+    // Send frame to backend emotion detection API
+    try {
+      const token = localStorage.getItem("token");
+      if (!token) {
+        console.error('[VideoConference] No auth token for emotion detection');
+        return;
+      }
+
+      console.log('[VideoConference] Sending frame to API for session:', sessionId);
+      const response = await fetch(`http://localhost:5000/api/emotion/session/${sessionId}/analyze-frame`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          frame: imageData.split(',')[1], // Remove data:image/jpeg;base64, prefix
+          timestamp: Date.now() / 1000
+        })
       });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[VideoConference] ✓ Emotion detected:', data.emotion?.dominant_emotion, 'confidence:', data.emotion?.confidence);
+        
+        // Update local emotion state if needed
+        if (data.emotion) {
+          setCurrentEmotion({
+            timestamp: new Date().toISOString(),
+            dominant_emotion: data.emotion.dominant_emotion,
+            confidence: data.emotion.confidence,
+            all_emotions: data.emotion.emotion_probabilities || {}
+          });
+        }
+      } else {
+        const error = await response.text();
+        console.error('[VideoConference] Emotion API error:', response.status, error);
+        console.error('[VideoConference] Emotion analysis failed:', response.status, error);
+      }
+    } catch (error) {
+      console.error('[VideoConference] Error analyzing emotion:', error);
     }
   };
   
@@ -451,6 +526,7 @@ const VideoConference = ({
         // The backend will broadcast it back to all participants including us
         const socket = socketRef.current;
         if (socket) {
+          console.log(`[Transcription] Sending as speaker: ${userType}`);
           socket.emit("transcription_chunk", {
             session_id: sessionId,
             text: finalTranscript.trim(),
@@ -665,9 +741,32 @@ const VideoConference = ({
               Transcribing
             </Badge>
           )}
+          {userType === "therapist" && (
+            <button
+              onClick={() => setUseMockData(!useMockData)}
+              className={`text-xs px-2 py-1 rounded ${
+                useMockData 
+                  ? 'bg-purple-600 text-white' 
+                  : 'bg-gray-700 text-gray-300'
+              }`}
+            >
+              {useMockData ? '🎭 Mock Data' : '📡 Live Data'}
+            </button>
+          )}
         </div>
         
         <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setIsExpandedLayout(!isExpandedLayout)}
+            className="text-white"
+            title={isExpandedLayout ? "Compact View" : "Expanded View"}
+          >
+            {isExpandedLayout ? <Minimize2 className="h-4 w-4 mr-2" /> : <Maximize2 className="h-4 w-4 mr-2" />}
+            {isExpandedLayout ? "Compact" : "Expand"}
+          </Button>
+          
           <Button
             variant="ghost"
             size="sm"
@@ -707,126 +806,58 @@ const VideoConference = ({
         </div>
       </div>
       
-      {/* Main Content */}
-      <div className="flex-1 flex gap-4 p-4">
-        {/* Video Area */}
-        <div className="flex-1 grid grid-cols-2 gap-4">
-          {/* Remote Video */}
-          <Card className="relative bg-black overflow-hidden">
-            <video
-              ref={remoteVideoRef}
-              autoPlay
-              playsInline
-              className="w-full h-full object-cover"
-            />
-            <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-lg">
-              <span className="text-white text-sm">Remote Participant</span>
-            </div>
-          </Card>
-          
-          {/* Local Video */}
-          <Card className="relative bg-black overflow-hidden">
-            <video
-              ref={localVideoRef}
-              autoPlay
-              playsInline
-              muted
-              className="w-full h-full object-cover"
-            />
-            <canvas ref={canvasRef} className="hidden" />
-            <div className="absolute top-4 left-4 bg-black/50 px-3 py-1 rounded-lg">
-              <span className="text-white text-sm">You ({userType})</span>
-            </div>
-            
-            {/* Emotion Indicator */}
-            {currentEmotion && userType === "therapist" && (
-              <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Activity className="h-4 w-4 text-white" />
-                  <span className="text-white text-sm">
-                    Emotion: {currentEmotion.dominant_emotion}
-                  </span>
-                  <div
-                    className={`w-3 h-3 rounded-full ${getEmotionColor(
-                      currentEmotion.dominant_emotion
-                    )}`}
-                  />
-                </div>
-              </div>
-            )}
-          </Card>
-        </div>
-        
-        {/* Sidebar - Show transcript for all, emotions only for therapist */}
-        {showTranscript && (
-          <div className="w-96 flex flex-col gap-4">
-            {/* Live Transcript */}
-            <Card className="p-4 bg-slate-800 text-white flex-1 overflow-y-auto">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5" />
-                  <h3 className="font-semibold">Live Transcript</h3>
-                </div>
-                {isTranscribing && (
-                  <div className="flex items-center gap-1">
-                    <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                    <span className="text-xs text-slate-400">Recording</span>
-                  </div>
-                )}
-              </div>
-              
-              <div className="space-y-3 max-h-[calc(100%-4rem)] overflow-y-auto">
-                {transcript.length === 0 ? (
-                  <div className="text-center text-slate-400 py-8">
-                    <MessageSquare className="h-12 w-12 mx-auto mb-2 opacity-30" />
-                    <p>Transcript will appear here as you speak</p>
-                    <p className="text-xs mt-2">Make sure your microphone is enabled</p>
-                  </div>
-                ) : (
-                  transcript.map((segment, idx) => (
-                    <div key={idx} className="text-sm border-l-2 border-slate-600 pl-3">
-                      <div className="text-slate-400 text-xs flex items-center gap-2">
-                        <span>{new Date(segment.timestamp).toLocaleTimeString()}</span>
-                        <span className="capitalize font-semibold text-blue-400">
-                          {segment.speaker === 'therapist' ? '🩺 Therapist' : '👤 Client'}
-                        </span>
-                      </div>
-                      <div className="mt-1">{segment.text}</div>
-                    </div>
-                  ))
-                )}
+      {/* Main Content - Conditional Layout */}
+      {!isExpandedLayout ? (
+        // Compact 3-Column Layout
+        <div className="flex-1 flex gap-4 p-4 overflow-hidden">
+          {/* Left Column - Therapist Video & Transcript */}
+          <div className={showTranscript ? "w-80 flex flex-col gap-4" : "flex-1 flex flex-col gap-4"}>
+            <Card className="relative bg-black overflow-hidden aspect-video">
+              <video
+                ref={localVideoRef}
+                autoPlay
+                playsInline
+                muted
+                className="w-full h-full object-contain"
+              />
+              <canvas ref={canvasRef} className="hidden" />
+              <div className="absolute top-2 left-2 bg-black/70 px-2 py-1 rounded">
+                <span className="text-white text-xs">Therapist ({userName})</span>
               </div>
             </Card>
             
-            {/* Emotion Timeline - Only for therapist */}
-            {userType === "therapist" && (
-              <Card className="p-4 bg-slate-800 text-white" style={{ maxHeight: '300px', overflowY: 'auto' }}>
-                <div className="flex items-center gap-2 mb-4">
-                  <Activity className="h-5 w-5" />
-                  <h3 className="font-semibold">Client Emotions</h3>
+            {/* Live Transcript */}
+            {showTranscript && (
+              <Card className="flex-1 p-4 bg-slate-800 text-white overflow-hidden flex flex-col">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" />
+                    <h3 className="font-semibold text-sm">Live Transcript</h3>
+                  </div>
+                  {isTranscribing && (
+                    <div className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                      <span className="text-xs text-slate-400">Recording</span>
+                    </div>
+                  )}
                 </div>
                 
-                <div className="space-y-2">
-                  {emotionHistory.length === 0 ? (
-                    <div className="text-center text-slate-400 py-4">
-                      <Activity className="h-8 w-8 mx-auto mb-2 opacity-30" />
-                      <p className="text-sm">Emotion data will appear here</p>
+                <div className="flex-1 space-y-2 overflow-y-auto">
+                  {transcript.length === 0 ? (
+                    <div className="text-center text-slate-400 py-8">
+                      <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                      <p className="text-xs">Transcript will appear here</p>
                     </div>
                   ) : (
-                    emotionHistory.slice(-10).reverse().map((emotion, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between text-sm p-2 bg-slate-700/50 rounded"
-                      >
-                        <span className="text-xs">{new Date(emotion.timestamp).toLocaleTimeString()}</span>
-                        <div className="flex items-center gap-2">
-                          <span className="capitalize text-sm">{emotion.dominant_emotion}</span>
-                          <div
-                            className={`w-3 h-3 rounded-full ${getEmotionColor(
-                              emotion.dominant_emotion
-                            )}`}
-                          />
+                    transcript.map((segment, idx) => (
+                      <div key={idx} className="text-xs border-l-2 border-slate-600 pl-2">
+                        <div className="text-slate-400 text-xs flex items-center gap-1">
+                          <span>{new Date(segment.timestamp).toLocaleTimeString()}</span>
+                          <span className="capitalize font-semibold text-blue-400">
+                            {segment.speaker === 'therapist' ? '🩺' : '👤'}
+                          </span>
                         </div>
+                        <div className="mt-1">{segment.text}</div>
                       </div>
                     ))
                   )}
@@ -834,8 +865,153 @@ const VideoConference = ({
               </Card>
             )}
           </div>
-        )}
-      </div>
+          
+          {/* Center Column - Client Video */}
+          <div className={showTranscript ? "flex-1" : "flex-1"}>
+            <Card className="relative bg-black overflow-hidden h-full">
+              <video
+                ref={remoteVideoRef}
+                autoPlay
+                playsInline
+                className="w-full h-full object-contain"
+              />
+              <div className="absolute top-4 left-4 bg-black/70 px-3 py-1 rounded-lg">
+                <span className="text-white text-sm font-semibold">Client</span>
+              </div>
+              
+              {/* Emotion Indicator */}
+              {currentEmotion && userType === "therapist" && (
+                <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Activity className="h-4 w-4 text-white" />
+                    <span className="text-white text-sm">
+                      Emotion: {currentEmotion.dominant_emotion}
+                    </span>
+                    <div
+                      className={`w-3 h-3 rounded-full ${getEmotionColor(
+                        currentEmotion.dominant_emotion
+                      )}`}
+                    />
+                  </div>
+                </div>
+              )}
+            </Card>
+          </div>
+          
+          {/* Right Column - Emotion Monitor & Features */}
+          {showTranscript && userType === "therapist" && (
+            <div className="w-96 overflow-y-auto">
+              <EmotionMonitor sessionId={sessionId} isActive={isConnected} useMockData={useMockData} />
+            </div>
+          )}
+        </div>
+      ) : (
+        // Expanded Layout - Features Above, Videos Below
+        <div className="flex-1 flex flex-col gap-4 p-4 overflow-hidden">
+          {/* Top Row - Emotion Features */}
+          {userType === "therapist" && (
+            <div className="h-48 overflow-x-auto overflow-y-hidden">
+              <EmotionMonitor sessionId={sessionId} isActive={isConnected} layout="horizontal" useMockData={useMockData} />
+            </div>
+          )}
+          
+          {/* Bottom Row - Videos and Transcript */}
+          <div className="flex-1 flex gap-4 min-h-0 overflow-hidden">
+            {/* Videos Section - Left/Center */}
+            <div className={showTranscript ? "flex-1 flex gap-4 min-h-0" : "flex-1 flex gap-4 min-h-0"}>
+              {/* Therapist Video */}
+              <div className="flex-1 min-h-0">
+                <Card className="relative bg-black overflow-hidden h-full">
+                  <video
+                    ref={localVideoRef}
+                    autoPlay
+                    playsInline
+                    muted
+                    className="w-full h-full object-contain"
+                  />
+                  <canvas ref={canvasRef} className="hidden" />
+                  <div className="absolute top-4 left-4 bg-black/70 px-3 py-1 rounded-lg">
+                    <span className="text-white text-sm font-semibold">Therapist ({userName})</span>
+                  </div>
+                </Card>
+              </div>
+              
+              {/* Client Video */}
+              <div className="flex-1 min-h-0">
+                <Card className="relative bg-black overflow-hidden h-full">
+                  <video
+                    ref={remoteVideoRef}
+                    autoPlay
+                    playsInline
+                    className="w-full h-full object-contain"
+                  />
+                  <div className="absolute top-4 left-4 bg-black/70 px-3 py-1 rounded-lg">
+                    <span className="text-white text-sm font-semibold">Client</span>
+                  </div>
+                  
+                  {/* Emotion Indicator */}
+                  {currentEmotion && userType === "therapist" && (
+                    <div className="absolute bottom-4 left-4 bg-black/70 px-4 py-2 rounded-lg">
+                      <div className="flex items-center gap-2">
+                        <Activity className="h-4 w-4 text-white" />
+                        <span className="text-white text-sm">
+                          Emotion: {currentEmotion.dominant_emotion}
+                        </span>
+                        <div
+                          className={`w-3 h-3 rounded-full ${getEmotionColor(
+                            currentEmotion.dominant_emotion
+                          )}`}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </Card>
+              </div>
+            </div>
+            
+            {/* Right - Transcript */}
+            {showTranscript && (
+              <div className="w-96">
+                <Card className="h-full p-4 bg-slate-800 text-white overflow-hidden flex flex-col">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <MessageSquare className="h-4 w-4" />
+                      <h3 className="font-semibold text-sm">Live Transcript</h3>
+                    </div>
+                    {isTranscribing && (
+                      <div className="flex items-center gap-1">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+                        <span className="text-xs text-slate-400">Recording</span>
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="flex-1 space-y-2 overflow-y-auto">
+                    {transcript.length === 0 ? (
+                      <div className="text-center text-slate-400 py-8">
+                        <MessageSquare className="h-10 w-10 mx-auto mb-2 opacity-30" />
+                        <p className="text-xs">Transcript will appear here</p>
+                      </div>
+                    ) : (
+                      transcript.map((segment, idx) => (
+                        <div key={idx} className="text-sm border-l-2 border-slate-600 pl-3">
+                          <div className="text-slate-400 text-xs flex items-center gap-2 mb-1">
+                            <span>{new Date(segment.timestamp).toLocaleTimeString()}</span>
+                            <span className="capitalize font-semibold text-blue-400">
+                              {segment.speaker === 'therapist' ? '🩺 Therapist' : '👤 Client'}
+                            </span>
+                          </div>
+                          <div>{segment.text}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </Card>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

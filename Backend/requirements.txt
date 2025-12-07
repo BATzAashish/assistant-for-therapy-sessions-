@@ -13,23 +13,21 @@ gevent==24.2.1
 gevent-websocket==0.10.1
 
 # AI/ML features for transcription and summarization
-# Choose one or both:
-google-generativeai>=0.3.0  # For Google Gemini (recommended - free tier)
-openai>=1.99.9  # For OpenAI (alternative)
+google-generativeai>=0.3.0  # Google Gemini (free tier - 15 RPM)
+groq>=0.4.0  # Groq (free tier - extremely fast, recommended fallback)
+openai>=1.99.9  # OpenAI (paid - optional fallback)
 
 # PDF generation for session reports
 reportlab==4.0.9
 
-# Optional: Uncomment these if you need additional AI/ML features
-# anthropic==0.18.1
-# opencv-python==4.9.0.80
-# mediapipe==0.10.21
-# librosa==0.10.1
-# soundfile==0.12.1
-# numpy==1.26.3
-# fer==22.5.1
-# deepface==0.0.87
-# tensorflow==2.20.0
-# SpeechRecognition==3.10.1
-# pydub==0.25.1
-# webrtcvad==2.0.10
+# Video Emotion Detection (100% free, local inference)
+# Tested working configuration as of Dec 2024
+opencv-python>=4.8.0
+opencv-contrib-python>=4.8.0
+mediapipe>=0.10.0
+fer>=22.5.0
+tensorflow>=2.13.0,<2.18.0  # TensorFlow 2.17.1 confirmed working
+numpy>=1.24.0,<2.0.0  # numpy 1.26.4 compatible with langchain
+torch>=2.0.0  # PyTorch for facenet-pytorch (FER dependency)
+
+# Note: jax and jaxlib removed to avoid conflicts (not needed for emotion detection)

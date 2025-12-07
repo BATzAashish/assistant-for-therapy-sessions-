@@ -74,6 +74,7 @@ from routes.notes_routes import notes_bp
 from routes.ai_routes import ai_bp
 from routes.meeting_routes import meeting_bp
 from routes.webrtc_routes import webrtc_bp, init_socketio
+from routes.emotion_routes import emotion_bp
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -83,6 +84,7 @@ app.register_blueprint(notes_bp, url_prefix='/api/notes')
 app.register_blueprint(ai_bp, url_prefix='/api/ai')
 app.register_blueprint(meeting_bp, url_prefix='/api/meetings')
 app.register_blueprint(webrtc_bp, url_prefix='/api/webrtc')
+app.register_blueprint(emotion_bp, url_prefix='/api/emotion')
 
 # Initialize WebRTC Socket.IO handlers
 init_socketio(socketio, db)

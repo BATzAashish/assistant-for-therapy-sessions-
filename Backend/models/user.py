@@ -22,6 +22,7 @@ class User:
             'password_hash': generate_password_hash(password),
             'full_name': full_name,
             'specialization': specialization,
+            'role': 'therapist',  # All users are therapists
             'is_active': True,
             'created_at': datetime.utcnow(),
             'updated_at': datetime.utcnow()

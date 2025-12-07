@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from models.session import Session
 from models.client import Client
-from datetime import datetime
+from datetime import datetime, timedelta
 from bson.objectid import ObjectId
 
 session_bp = Blueprint('sessions', __name__)
@@ -131,6 +131,26 @@ def create_session():
         scheduled_date = datetime.fromisoformat(data['scheduled_date'].replace('Z', '+00:00'))
         
         session_model = Session(current_app.db)
+        
+        # Check for duplicate session (same client, therapist, date, and time within 5 minutes)
+        time_window_start = scheduled_date - timedelta(minutes=5)
+        time_window_end = scheduled_date + timedelta(minutes=5)
+        
+        existing_session = session_model.collection.find_one({
+            'therapist_id': ObjectId(current_user_id),
+            'client_id': ObjectId(data['client_id']),
+            'scheduled_date': {
+                '$gte': time_window_start,
+                '$lte': time_window_end
+            }
+        })
+        
+        if existing_session:
+            print(f"🟡 Duplicate session detected, returning existing session: {existing_session['_id']}")
+            return jsonify({
+                'message': 'Session already exists',
+                'session': session_model.to_dict(existing_session, populate_client=True)
+            }), 200
         
         # Create session
         session_id = session_model.create_session(
