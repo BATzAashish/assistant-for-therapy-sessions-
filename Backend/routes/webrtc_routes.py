@@ -307,7 +307,13 @@ def end_video_session(session_id):
             session_model = Session(current_app.db)
             session = session_model.find_by_id(session_id)
             
-            if session and session_data.get('transcription'):
+            # Check if note already exists for this session
+            note_model = Note(current_app.db)
+            if session and note_model.note_exists_for_session(session_id):
+                print(f"[AUTO-NOTES] Note already exists for session {session_id}, skipping creation in webrtc")
+                session_data['auto_note_created'] = False
+                session_data['note_exists'] = True
+            elif session and session_data.get('transcription'):
                 # Use mock services if no API key
                 has_api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('GEMINI_API_KEY')
                 if has_api_key:
@@ -369,8 +375,7 @@ def end_video_session(session_id):
 {key_points.get('next_session_focus', 'To be determined')}
 """
                     
-                    # Save the note
-                    note_model = Note(current_app.db)
+                    # Save the note (note_model already initialized above)
                     note_id = note_model.create_note(
                         therapist_id=str(session['therapist_id']),
                         client_id=str(session['client_id']),

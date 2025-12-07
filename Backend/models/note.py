@@ -53,6 +53,14 @@ class Note:
         """Find notes for a session"""
         return list(self.collection.find({'session_id': ObjectId(session_id)}).sort('created_at', -1))
     
+    def note_exists_for_session(self, session_id):
+        """Check if a note already exists for a session"""
+        try:
+            count = self.collection.count_documents({'session_id': ObjectId(session_id)})
+            return count > 0
+        except:
+            return False
+    
     def find_by_client(self, client_id, limit=None):
         """Find notes for a client"""
         cursor = self.collection.find({'client_id': ObjectId(client_id)}).sort('created_at', -1)

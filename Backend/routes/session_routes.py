@@ -225,6 +225,17 @@ def end_session(session_id):
                     from models.client import Client
                     import os
                     
+                    # Check if note already exists for this session
+                    note_model = Note(current_app.db)
+                    if note_model.note_exists_for_session(session_id):
+                        print(f"[AUTO-NOTES] Note already exists for session {session_id}, skipping creation")
+                        return jsonify({
+                            'message': 'Session ended successfully',
+                            'session': session_model.to_dict(updated_session),
+                            'note_auto_generated': False,
+                            'note_exists': True
+                        }), 200
+                    
                     # Use mock services if no API key is configured
                     has_api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('GEMINI_API_KEY')
                     print(f"[AUTO-NOTES] Has API key: {bool(has_api_key)}")
@@ -319,7 +330,7 @@ def end_session(session_id):
 """
                         
                         # Save the note with separate fields for PDF export
-                        note_model = Note(current_app.db)
+                        # note_model already initialized above for duplicate check
                         
                         # Extract action items from key points
                         action_items_list = []

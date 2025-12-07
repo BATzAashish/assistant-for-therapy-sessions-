@@ -104,6 +104,72 @@ class SummaryService:
             print(f"Error fetching client context: {e}")
             return "", 0
     
+    def get_cognitive_patterns_context(self, db, client_id: str, limit: int = 3) -> str:
+        """
+        Fetch previously identified cognitive patterns for better pattern tracking
+        
+        Args:
+            db: Database connection
+            client_id: Client's ID
+            limit: Number of recent sessions to analyze
+            
+        Returns:
+            Formatted string with pattern history
+        """
+        try:
+            from bson import ObjectId
+            
+            # Fetch recent notes
+            notes = list(db.notes.find({
+                'client_id': ObjectId(client_id)
+            }).sort('created_at', -1).limit(limit))
+            
+            if not notes:
+                return ""
+            
+            patterns_context = "\n### COGNITIVE PATTERNS HISTORY ###\n"
+            patterns_context += "Previously identified patterns in past sessions:\n\n"
+            
+            pattern_found = False
+            for i, note in enumerate(reversed(notes), 1):
+                session_date = note.get('session_date', 'Unknown')
+                ai_summary = note.get('ai_summary', note.get('content', ''))
+                
+                # Extract cognitive patterns section if present
+                if 'Cognitive Pattern' in ai_summary or 'cognitive pattern' in ai_summary.lower():
+                    # Find the patterns section
+                    lines = ai_summary.split('\n')
+                    capturing = False
+                    pattern_text = []
+                    
+                    for line in lines:
+                        if 'cognitive pattern' in line.lower():
+                            capturing = True
+                            continue
+                        elif capturing and line.strip().startswith('**') and 'homework' in line.lower():
+                            # Next section started (Homework/Action Items)
+                            break
+                        elif capturing and line.strip().startswith('**') and any(x in line.lower() for x in ['initial', 'today', 'progress', 'clinical', 'intervention']):
+                            # Different major section started
+                            break
+                        elif capturing and line.strip():
+                            pattern_text.append(line.strip())
+                    
+                    if pattern_text:
+                        pattern_found = True
+                        patterns_context += f"Session {i} ({session_date}):\n"
+                        patterns_context += '\n'.join(pattern_text[:8]) + "\n\n"  # Limit to 8 lines
+            
+            if not pattern_found:
+                return ""  # Don't include empty context
+            
+            patterns_context += "### END COGNITIVE PATTERNS HISTORY ###\n\n"
+            return patterns_context
+            
+        except Exception as e:
+            print(f"Error fetching cognitive patterns context: {e}")
+            return ""
+    
     def generate_session_summary(
         self, 
         transcript: str, 
@@ -136,11 +202,15 @@ class SummaryService:
         try:
             # Fetch client context for RAG
             client_context = ""
+            patterns_context = ""
             session_count = 0
             if client_id is not None and db is not None:
                 client_context, session_count = self.get_client_context(db, client_id, limit=3)
+                patterns_context = self.get_cognitive_patterns_context(db, client_id, limit=3)
                 if session_count > 0:
                     print(f"[RAG] Added context from {session_count} previous session(s)")
+                    if patterns_context:
+                        print(f"[RAG] Added cognitive patterns history for tracking")
                 else:
                     print(f"[RAG] First session for this client - establishing baseline")
             
@@ -176,12 +246,22 @@ Create CONCISE but COMPLETE clinical notes following this structure:
 - Initial treatment goals
 - Next steps and recommendations
 
+**Cognitive Patterns Identified:**
+Analyze the transcript for these specific patterns:
+- Self-blame: Client blaming themselves excessively for outcomes
+- Avoidance: Client avoiding thoughts, feelings, or situations
+- All-or-nothing thinking: Viewing situations in black-and-white extremes
+- Depressive language: Expressions of hopelessness, worthlessness, or helplessness
+- Catastrophizing: Expecting worst-case scenarios or magnifying problems
+
+List ONLY patterns that are clearly evident in the transcript with brief examples.
+
 **Initial Action Items:**
 - Preliminary homework for client
 - Areas to observe or track until next session
 
 Keep notes factual and professional. Base everything ONLY on what's in the transcript.
-Use clear, direct English language suitable for clinical records. Total length: 350-550 words."""
+Use clear, direct English language suitable for clinical records. Total length: 400-650 words."""
             else:
                 # Subsequent sessions - compare and track progress
                 system_prompt = f"""You are an experienced clinical psychologist writing notes for a FOLLOW-UP session.
@@ -214,12 +294,29 @@ Create CONCISE but COMPLETE clinical notes following this structure:
 - Key insights or breakthroughs achieved
 - Client's response to interventions
 
+**Cognitive Patterns Identified:**
+Analyze today's transcript for these specific patterns:
+- Self-blame: Client blaming themselves excessively for outcomes
+- Avoidance: Client avoiding thoughts, feelings, or situations
+- All-or-nothing thinking: Viewing situations in black-and-white extremes
+- Depressive language: Expressions of hopelessness, worthlessness, or helplessness
+- Catastrophizing: Expecting worst-case scenarios or magnifying problems
+
+⭐ IMPORTANT - If pattern history is provided below, use it to:
+- Compare current patterns to previous sessions
+- Note if patterns are INCREASING, DECREASING, or STABLE
+- Identify NEW patterns not seen before
+- Highlight patterns that have RESOLVED or improved
+
+List ONLY patterns that are clearly evident in today's session with brief examples.
+Note changes in frequency or intensity compared to previous sessions when history is available.
+
 **Homework & Next Steps:**
 - New assignments and skills to practice
 - Specific goals for next session
 
 Keep notes factual with CLEAR comparisons to previous sessions.
-Base everything on transcript and context provided. Write ENTIRELY IN ENGLISH. Total length: 350-550 words."""
+Base everything on transcript and context provided. Write ENTIRELY IN ENGLISH. Total length: 400-650 words."""
 
             if session_count == 0:
                 user_prompt = f"""This is the FIRST session with {client_name if client_name else '[Name]'}.
@@ -234,19 +331,20 @@ Generate detailed initial assessment notes based only on what was discussed.
 Establish clear baseline for future progress tracking.
 WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
             else:
-                user_prompt = f"""{client_context}This is SESSION #{session_count + 1} with {client_name if client_name else '[Name]'}.
+                user_prompt = f"""{client_context}{patterns_context}This is SESSION #{session_count + 1} with {client_name if client_name else '[Name]'}.
 
 Session Type: {session_type}
 
 TODAY'S TRANSCRIPT (may contain Hindi/English mix):
 {transcript}
 
-Generate clinical notes using past session context provided above.
+Generate clinical notes using past session context AND cognitive patterns history provided above.
 Specifically highlight:
-- What has IMPROVED? (progress, positive changes)
-- What has WORSENED or stayed STAGNANT? (setbacks, challenges)
-- What PATTERNS are emerging? (recurring themes, behaviors)
+- What has IMPROVED? (progress, positive changes, resolved patterns)
+- What has WORSENED or stayed STAGNANT? (setbacks, challenges, persistent patterns)
+- What PATTERNS are emerging? (recurring themes, behaviors, new patterns)
 - How is the client's UNDERSTANDING evolving? (insight development)
+- How have COGNITIVE PATTERNS changed? (compare to history when available)
 
 WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
             
