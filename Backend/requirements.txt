@@ -20,6 +20,10 @@ openai>=1.99.9  # OpenAI (paid - optional fallback)
 # PDF generation for session reports
 reportlab==4.0.9
 
+# RAG Assistant dependencies
+chromadb>=0.4.0  # Vector database for embeddings
+PyPDF2>=3.0.0  # PDF text extraction
+
 # Video Emotion Detection (100% free, local inference)
 # Tested working configuration as of Dec 2024
 opencv-python>=4.8.0

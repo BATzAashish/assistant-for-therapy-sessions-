@@ -173,7 +173,11 @@ export const sessionAPI = {
   cancel: async (id: string) => {
     const response = await fetch(`${API_BASE_URL}/sessions/${id}/cancel`, {
       method: 'POST',
-      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({}),
     });
     return handleResponse(response);
   },
@@ -248,6 +252,13 @@ export const notesAPI = {
     });
     return handleResponse(response);
   },
+
+  getPreviousSessionNotes: async (clientId: string, currentSessionId: string) => {
+    const response = await fetch(`${API_BASE_URL}/notes/previous-session/${clientId}/${currentSessionId}`, {
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+    });
+    return handleResponse(response);
+  },
 };
 
 // AI Insights API
@@ -303,6 +314,76 @@ export const aiAPI = {
         'Authorization': `Bearer ${getAuthToken()}`,
       },
       body: JSON.stringify({ meeting_link }),
+    });
+    return handleResponse(response);
+  },
+};
+
+// Assistant API
+export const assistantAPI = {
+  query: async (query: string, n_results: number = 5) => {
+    const response = await fetch(`${API_BASE_URL}/assistant/query`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({ query, n_results }),
+    });
+    return handleResponse(response);
+  },
+
+  initialize: async (chunk_size: number = 1000) => {
+    const response = await fetch(`${API_BASE_URL}/assistant/initialize`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${getAuthToken()}`,
+      },
+      body: JSON.stringify({ chunk_size }),
+    });
+    return handleResponse(response);
+  },
+
+  indexNotes: async () => {
+    const response = await fetch(`${API_BASE_URL}/assistant/index-notes`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+    });
+    return handleResponse(response);
+  },
+
+  indexClients: async () => {
+    const response = await fetch(`${API_BASE_URL}/assistant/index-clients`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+    });
+    return handleResponse(response);
+  },
+
+  getStats: async () => {
+    const response = await fetch(`${API_BASE_URL}/assistant/stats`, {
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+    });
+    return handleResponse(response);
+  },
+
+  clearDatabase: async () => {
+    const response = await fetch(`${API_BASE_URL}/assistant/clear`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+    });
+    return handleResponse(response);
+  },
+
+  uploadPDF: async (file: File) => {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch(`${API_BASE_URL}/assistant/upload-pdf`, {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${getAuthToken()}` },
+      body: formData,
     });
     return handleResponse(response);
   },

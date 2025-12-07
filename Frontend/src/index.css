@@ -126,6 +126,17 @@ All colors MUST be HSL.
   }
 }
 
+/* Custom word breaking for chat messages */
+.word-break {
+  word-break: break-word !important;
+  overflow-wrap: anywhere !important;
+}
+
+/* Ensure content respects boundaries */
+* {
+  min-width: 0;
+}
+
 /* Marquee Animations */
 @keyframes marquee-left {
   0% {

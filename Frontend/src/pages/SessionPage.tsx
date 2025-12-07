@@ -27,8 +27,10 @@ import {
   Link as LinkIcon,
   Search,
   Repeat,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
-import { sessionAPI, clientAPI } from "@/lib/api";
+import { sessionAPI, clientAPI, notesAPI } from "@/lib/api";
 import { aiAPI } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { Input } from "@/components/ui/input";
@@ -63,6 +65,7 @@ const SessionPage = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [clients, setClients] = useState<any[]>([]);
+  const [clientSelectedDates, setClientSelectedDates] = useState<Map<string, string>>(new Map());
   const [formData, setFormData] = useState({
     client_id: searchParams.get("client") || "",
     scheduled_date: "",
@@ -91,17 +94,89 @@ const SessionPage = () => {
     }
   }, []);
 
-  // Filter sessions based on search term
+  // Filter sessions based on search term only
   useEffect(() => {
-    if (!searchTerm.trim()) {
-      setFilteredSessions(sessions);
-    } else {
-      const filtered = sessions.filter((session) => 
+    let filtered = sessions;
+
+    // Apply search filter
+    if (searchTerm.trim()) {
+      filtered = filtered.filter((session) => 
         session.client_id?.name?.toLowerCase().includes(searchTerm.toLowerCase())
       );
-      setFilteredSessions(filtered);
     }
+
+    setFilteredSessions(filtered);
   }, [sessions, searchTerm]);
+
+  // Get unique dates for a specific client
+  const getClientDates = (clientId: string) => {
+    const clientSessions = sessions.filter(s => s.client_id?._id === clientId);
+    const dates = clientSessions.map(session => {
+      const date = new Date(session.scheduled_date);
+      return date.toISOString().split('T')[0];
+    });
+    return Array.from(new Set(dates)).sort();
+  };
+
+  // Set selected date for a client
+  const setClientSelectedDate = (clientId: string, date: string) => {
+    setClientSelectedDates(prev => {
+      const newMap = new Map(prev);
+      newMap.set(clientId, date);
+      return newMap;
+    });
+  };
+
+  // Get sessions for a client on selected date
+  const getClientSessionsForDate = (clientId: string) => {
+    const selectedDate = clientSelectedDates.get(clientId);
+    const clientSessions = sessions.filter(s => s.client_id?._id === clientId);
+    
+    if (!selectedDate) {
+      return clientSessions;
+    }
+    
+    return clientSessions.filter(session => {
+      const sessionDate = new Date(session.scheduled_date).toISOString().split('T')[0];
+      return sessionDate === selectedDate;
+    });
+  };
+
+  // Group sessions by client
+  const getGroupedSessions = () => {
+    const grouped = new Map<string, Session[]>();
+    
+    filteredSessions.forEach(session => {
+      const clientId = session.client_id?._id;
+      if (!clientId) return;
+      
+      if (!grouped.has(clientId)) {
+        grouped.set(clientId, []);
+      }
+      grouped.get(clientId)!.push(session);
+    });
+
+    return grouped;
+  };
+
+  // Format date for display in dropdown
+  const formatDateForDropdown = (dateString: string) => {
+    const date = new Date(dateString + 'T00:00:00');
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    
+    const isToday = date.toDateString() === today.toDateString();
+    const isTomorrow = date.toDateString() === tomorrow.toDateString();
+    
+    if (isToday) {
+      return `Today - ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    } else if (isTomorrow) {
+      return `Tomorrow - ${date.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`;
+    } else {
+      return `${date.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric", year: "numeric" })}`;
+    }
+  };
 
   const fetchSessions = async () => {
     try {
@@ -253,6 +328,25 @@ const SessionPage = () => {
     }
   };
 
+  const handleCancelSession = async (sessionId: string) => {
+    if (window.confirm("Are you sure you want to cancel this session?")) {
+      try {
+        await sessionAPI.cancel(sessionId);
+        toast({
+          title: "Success",
+          description: "Session cancelled successfully",
+        });
+        fetchSessions();
+      } catch (error: any) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to cancel session",
+          variant: "destructive",
+        });
+      }
+    }
+  };
+
   const handleDeleteSession = async (sessionId: string) => {
     if (window.confirm("Are you sure you want to delete this session? This action cannot be undone.")) {
       try {
@@ -328,18 +422,18 @@ const SessionPage = () => {
               <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
                 Sessions
               </h1>
-              <p className="text-slate-600 dark:text-slate-400 mt-1">
+              <p className="text-slate-600 dark:text-slate-400 mt-2">
                 Manage and schedule therapy sessions
               </p>
             </div>
             <Dialog open={isOpen} onOpenChange={setIsOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white">
-                  <Plus className="h-5 w-5 mr-2" />
-                  New Session
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+                <DialogTrigger asChild>
+                  <Button className="bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 text-white">
+                    <Plus className="h-5 w-5 mr-2" />
+                    New Session
+                  </Button>
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
                 <DialogHeader>
                   <DialogTitle>Schedule a New Session</DialogTitle>
                   <DialogDescription>
@@ -601,114 +695,146 @@ const SessionPage = () => {
                 No Sessions Found
               </h3>
               <p className="text-slate-600 dark:text-slate-400">
-                No sessions match "{searchTerm}". Try a different search term.
+                {searchTerm 
+                  ? `No sessions match "${searchTerm}". Try a different search term.`
+                  : "No sessions found."}
               </p>
             </Card>
           ) : (
-            <div className="grid gap-4">
-              {filteredSessions
-                .sort((a, b) => {
-                  // Sort by date and time in chronological order (earliest first)
-                  const dateA = new Date(a.scheduled_date).getTime();
-                  const dateB = new Date(b.scheduled_date).getTime();
-                  return dateA - dateB;
-                })
-                .map((session) => (
-                <Card
-                  key={session._id}
-                  className="p-6 hover:shadow-lg transition-shadow duration-200"
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-3 mb-2">
-                        <User className="h-5 w-5 text-blue-500" />
-                        <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
-                          {session.client_id?.name || "Unknown Client"}
-                        </h3>
-                        <Badge
-                          className={`${getStatusColor(session.status)} flex items-center gap-1`}
-                        >
-                          {getStatusIcon(session.status)}
-                          {session.status}
-                        </Badge>
-                      </div>
+            <div className="space-y-4">
+              {Array.from(getGroupedSessions().entries()).map(([clientId, allClientSessions]) => {
+                const clientDates = getClientDates(clientId);
+                const selectedDate = clientSelectedDates.get(clientId) || clientDates[0];
+                const displaySessions = getClientSessionsForDate(clientId);
+                const primarySession = displaySessions[0];
+                
+                if (!primarySession) return null;
 
-                      <div className="flex flex-wrap gap-4 mt-4 text-sm text-slate-600 dark:text-slate-400">
-                        <div className="flex items-center gap-2">
-                          <Calendar className="h-4 w-4" />
-                          {session.scheduled_date && formatDate(session.scheduled_date)}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Clock className="h-4 w-4" />
-                          {session.scheduled_date && formatTime(session.scheduled_date)}
-                        </div>
-                        {session.duration && (
-                          <div className="flex items-center gap-2">
-                            <Video className="h-4 w-4" />
-                            {session.duration} min
+                return (
+                  <Card
+                    key={clientId}
+                    className="overflow-hidden hover:shadow-lg transition-shadow duration-200"
+                  >
+                    {/* Primary Session Display */}
+                    <div className="p-6">
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-3 mb-2">
+                            <User className="h-5 w-5 text-blue-500" />
+                            <h3 className="text-lg font-semibold text-slate-900 dark:text-white">
+                              {primarySession.client_id?.name || "Unknown Client"}
+                            </h3>
+                            <Badge
+                              className={`${getStatusColor(primarySession.status)} flex items-center gap-1`}
+                            >
+                              {getStatusIcon(primarySession.status)}
+                              {primarySession.status}
+                            </Badge>
                           </div>
-                        )}
-                        {session.session_type && (
-                          <div className="flex items-center gap-2 capitalize">
-                            <User className="h-4 w-4" />
-                            {session.session_type}
+
+                          <div className="flex flex-wrap gap-4 mt-4 text-sm text-slate-600 dark:text-slate-400">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="h-4 w-4" />
+                              {primarySession.scheduled_date && formatDate(primarySession.scheduled_date)}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Clock className="h-4 w-4" />
+                              {primarySession.scheduled_date && formatTime(primarySession.scheduled_date)}
+                            </div>
+                            {primarySession.duration && (
+                              <div className="flex items-center gap-2">
+                                <Video className="h-4 w-4" />
+                                {primarySession.duration} min
+                              </div>
+                            )}
+                            {primarySession.session_type && (
+                              <div className="flex items-center gap-2 capitalize">
+                                <User className="h-4 w-4" />
+                                {primarySession.session_type}
+                              </div>
+                            )}
                           </div>
-                        )}
-                      </div>
-                      
-                      {/* Location and Meeting Link */}
-                      {(session.location || session.meeting_link) && (
-                        <div className="flex flex-wrap gap-4 mt-3 text-sm">
-                          {session.location && (
-                            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
-                              <MapPin className="h-4 w-4" />
-                              <span>{session.location}</span>
+                          
+                          {/* Location and Meeting Link */}
+                          {(primarySession.location || primarySession.meeting_link) && (
+                            <div className="flex flex-wrap gap-4 mt-3 text-sm">
+                              {primarySession.location && (
+                                <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                  <MapPin className="h-4 w-4" />
+                                  <span>{primarySession.location}</span>
+                                </div>
+                              )}
+                              {primarySession.meeting_link && (
+                                <a
+                                  href={primarySession.meeting_link}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <LinkIcon className="h-4 w-4" />
+                                  <span>Join Meeting</span>
+                                </a>
+                              )}
                             </div>
                           )}
-                          {session.meeting_link && (
-                            <a
-                              href={session.meeting_link}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center gap-2 text-blue-600 dark:text-blue-400 hover:underline"
+                        </div>
+
+                        <div className="flex items-center gap-2 ml-4">
+                          {/* Date Selector Dropdown for this client */}
+                          {clientDates.length > 1 && (
+                            <select
+                              value={selectedDate}
+                              onChange={(e) => setClientSelectedDate(clientId, e.target.value)}
+                              className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg text-xs font-medium text-slate-900 dark:text-white cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <LinkIcon className="h-4 w-4" />
-                              <span>Join Meeting</span>
-                            </a>
+                              {clientDates.map((date) => (
+                                <option key={date} value={date}>
+                                  📅 {formatDateForDropdown(date)}
+                                </option>
+                              ))}
+                            </select>
+                          )}
+                          {primarySession.status === "scheduled" && (
+                            <>
+                              <Button
+                                variant="default"
+                                size="sm"
+                                className="bg-green-600 hover:bg-green-700 text-white"
+                                onClick={() => navigate(`/dashboard/sessions/${primarySession._id}/video`)}
+                                title="Join Video Session"
+                              >
+                                <Video className="h-4 w-4 mr-2" />
+                                Join
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="text-orange-600 dark:text-orange-400 border-orange-300 hover:bg-orange-50 dark:hover:bg-orange-950"
+                                onClick={() => handleCancelSession(primarySession._id)}
+                                title="Cancel Session"
+                              >
+                                <AlertCircle className="h-4 w-4 mr-1" />
+                                Cancel
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
+                                onClick={() => handleDeleteSession(primarySession._id)}
+                                title="Delete Session"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </>
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
-
-                    <div className="flex gap-2 ml-4">
-                      {session.status === "scheduled" && (
-                        <>
-                          <Button
-                            variant="default"
-                            size="sm"
-                            className="bg-green-600 hover:bg-green-700 text-white"
-                            onClick={() => navigate(`/dashboard/sessions/${session._id}/video`)}
-                            title="Join Video Session"
-                          >
-                            <Video className="h-4 w-4 mr-2" />
-                            Join Video
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950"
-                            onClick={() => handleDeleteSession(session._id)}
-                            title="Delete Session"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                </Card>
-              ))}
+                  </Card>
+                );
+              })}
             </div>
           )}
         </div>

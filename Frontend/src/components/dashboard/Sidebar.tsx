@@ -12,7 +12,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Moon,
-  Sun
+  Sun,
+  Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -40,6 +41,7 @@ const Sidebar = ({ user }: SidebarProps) => {
     { icon: Calendar, label: "Calendar", path: "/dashboard/calendar" },
     { icon: Video, label: "Sessions", path: "/dashboard/sessions" },
     { icon: FileText, label: "Notes", path: "/dashboard/notes" },
+    { icon: Sparkles, label: "Assistant", path: "/dashboard/assistant" },
     { icon: UserPlus, label: "Add Client", path: "/dashboard/add-client" },
   ];
 

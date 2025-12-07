@@ -259,3 +259,93 @@ def delete_note(note_id):
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@notes_bp.route('/previous-session/<client_id>/<current_session_id>', methods=['GET'])
+@jwt_required()
+def get_previous_session_notes(client_id, current_session_id):
+    """Get notes from the previous session for a client"""
+    try:
+        current_user_id = get_jwt_identity()
+        
+        # Verify client belongs to therapist
+        client_model = Client(current_app.db)
+        client = client_model.find_by_id(client_id)
+        
+        if not client:
+            return jsonify({'error': 'Client not found'}), 404
+        
+        if str(client['therapist_id']) != current_user_id:
+            return jsonify({'error': 'Unauthorized'}), 403
+        
+        # Get current session to find its date
+        session_model = Session(current_app.db)
+        current_session = session_model.find_by_id(current_session_id)
+        
+        if not current_session:
+            return jsonify({'error': 'Current session not found'}), 404
+        
+        # Get all completed sessions for this client before the current session date
+        from bson.objectid import ObjectId
+        from datetime import datetime
+        
+        current_session_date = current_session.get('scheduled_date')
+        
+        pipeline = [
+            {
+                '$match': {
+                    'client_id': ObjectId(client_id),
+                    'therapist_id': ObjectId(current_user_id),
+                    'status': 'completed',
+                    '_id': {'$ne': ObjectId(current_session_id)},
+                    'scheduled_date': {'$lt': current_session_date} if current_session_date else {}
+                }
+            },
+            {'$sort': {'scheduled_date': -1}},
+            {'$limit': 1}
+        ]
+        
+        previous_sessions = list(current_app.db.sessions.aggregate(pipeline))
+        
+        if not previous_sessions:
+            return jsonify({
+                'has_previous': False,
+                'message': 'No previous session found',
+                'note': None
+            }), 200
+        
+        previous_session = previous_sessions[0]
+        previous_session_id = str(previous_session['_id'])
+        
+        # Get notes for the previous session
+        note_model = Note(current_app.db)
+        notes = note_model.find_by_session(previous_session_id)
+        
+        if not notes:
+            return jsonify({
+                'has_previous': True,
+                'has_notes': False,
+                'message': 'Previous session exists but no notes found',
+                'note': None,
+                'previous_session_date': previous_session.get('scheduled_date').isoformat() if previous_session.get('scheduled_date') else None
+            }), 200
+        
+        # Get the most recent note
+        latest_note = notes[0]
+        note_dict = note_model.to_dict(latest_note, populate_refs=True)
+        
+        # Extract key information
+        summary_data = {
+            'has_previous': True,
+            'has_notes': True,
+            'note_id': note_dict['_id'],
+            'summary': note_dict.get('ai_summary', note_dict.get('content', '')[:500]),
+            'action_items': note_dict.get('action_items', []),
+            'full_content': note_dict.get('content'),
+            'previous_session_date': previous_session.get('scheduled_date').isoformat() if previous_session.get('scheduled_date') else None,
+            'created_at': note_dict.get('created_at')
+        }
+        
+        return jsonify(summary_data), 200
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

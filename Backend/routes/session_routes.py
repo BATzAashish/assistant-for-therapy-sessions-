@@ -34,6 +34,23 @@ def get_sessions():
         
         sessions = session_model.find_by_therapist(current_user_id, status, start_date, end_date)
         
+        # Auto-cancel elapsed sessions that were never joined
+        current_time = datetime.utcnow()
+        for session in sessions:
+            if session.get('status') == 'scheduled':
+                scheduled_date = session.get('scheduled_date')
+                duration = session.get('duration', 60)
+                
+                if scheduled_date:
+                    # Calculate session end time
+                    from datetime import timedelta
+                    session_end = scheduled_date + timedelta(minutes=duration)
+                    
+                    # If current time is past session end time, auto-cancel
+                    if current_time > session_end:
+                        session_model.cancel_session(str(session['_id']), "Auto-cancelled: Session time elapsed")
+                        session['status'] = 'cancelled'
+        
         return jsonify({
             'sessions': [session_model.to_dict(session, populate_client=True) for session in sessions]
         }), 200
@@ -444,7 +461,7 @@ def cancel_session(session_id):
     """Cancel a session"""
     try:
         current_user_id = get_jwt_identity()
-        data = request.get_json()
+        data = request.get_json() or {}
         
         session_model = Session(current_app.db)
         session = session_model.find_by_id(session_id)
@@ -456,7 +473,7 @@ def cancel_session(session_id):
         if str(session['therapist_id']) != current_user_id:
             return jsonify({'error': 'Unauthorized'}), 403
         
-        reason = data.get('reason') if data else None
+        reason = data.get('reason', 'Cancelled by therapist')
         
         if session_model.cancel_session(session_id, reason):
             updated_session = session_model.find_by_id(session_id)
@@ -468,6 +485,9 @@ def cancel_session(session_id):
             return jsonify({'error': 'Failed to cancel session'}), 500
         
     except Exception as e:
+        print(f"Error cancelling session: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @session_bp.route('/<session_id>', methods=['DELETE'])

@@ -5,6 +5,10 @@ from flask_socketio import SocketIO
 from pymongo import MongoClient
 from config import config
 import os
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Initialize Flask app
 app = Flask(__name__)
@@ -75,6 +79,7 @@ from routes.ai_routes import ai_bp
 from routes.meeting_routes import meeting_bp
 from routes.webrtc_routes import webrtc_bp, init_socketio
 from routes.emotion_routes import emotion_bp
+from routes.assistant_routes import assistant_bp, init_assistant
 
 # Register blueprints
 app.register_blueprint(auth_bp, url_prefix='/api/auth')
@@ -85,9 +90,14 @@ app.register_blueprint(ai_bp, url_prefix='/api/ai')
 app.register_blueprint(meeting_bp, url_prefix='/api/meetings')
 app.register_blueprint(webrtc_bp, url_prefix='/api/webrtc')
 app.register_blueprint(emotion_bp, url_prefix='/api/emotion')
+app.register_blueprint(assistant_bp, url_prefix='/api/assistant')
 
 # Initialize WebRTC Socket.IO handlers
 init_socketio(socketio, db)
+
+# Initialize RAG Assistant
+if db is not None:
+    init_assistant(db)
 
 # Debug: Print all registered routes
 print("\nRegistered Routes:")
