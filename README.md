@@ -13,13 +13,10 @@ A comprehensive, full-stack therapy session management platform with AI-powered 
 
 - [Overview](#overview)
 - [Key Features](#key-features)
+- [System Workflow](#system-workflow)
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
-- [Setup Instructions](#setup-instructions)
-- [Environment Variables](#environment-variables)
-- [Usage Guide](#usage-guide)
-- [API Documentation](#api-documentation)
-- [License](#license)
+- [Project Structure](#project-structure)
 
 ---
 
@@ -94,6 +91,149 @@ TherapyHub is an advanced therapy practice management system designed to help me
 
 ---
 
+## 🔄 System Workflow
+
+### **1. Session Initialization**
+```
+Therapist logs in → Schedules session → Client joins video call
+```
+
+### **2. Real-Time Processing During Session**
+```
+┌─────────────────────────────────────────────────────────┐
+│  Video Stream (Client's Camera)                         │
+│         ↓                                                │
+│  Face Detection (MediaPipe) → Emotion Analysis (FER)    │
+│         ↓                                                │
+│  Emotion Data → Socket.io → Therapist Dashboard         │
+│                                                          │
+│  Audio Stream (Both Participants)                        │
+│         ↓                                                │
+│  Speech Recognition → Text Transcription                 │
+│         ↓                                                │
+│  Speaker Identification (THERAPIST vs CLIENT)            │
+│         ↓                                                │
+│  Real-time Transcript Display                            │
+└─────────────────────────────────────────────────────────┘
+```
+
+### **3. Post-Session Processing**
+```
+Session Ends
+    ↓
+Collect Transcript + Emotions
+    ↓
+RAG: Fetch Previous Session Context (ChromaDB)
+    ↓
+AI Generation (Gemini/Groq):
+### **Data Flow Architecture**
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    FRONTEND LAYER                         │
+│  React + TypeScript + TailwindCSS + shadcn/ui            │
+│                                                           │
+│  Components:                                              │
+│  • VideoConference (WebRTC)                               │
+│  • EmotionMonitor (Real-time Display)                     │
+│  • TranscriptViewer (Live Text)                           │
+│  • Dashboard (Analytics & Management)                     │
+└──────────────────────────────────────────────────────────┘
+                          ↕
+              REST API + Socket.io (Real-time)
+                          ↕
+┌──────────────────────────────────────────────────────────┐
+│                    BACKEND LAYER                          │
+│              Flask + Python + Socket.io                   │
+│                                                           │
+│  Services:                                                │
+│  • WebRTC Routes (Video Session Management)               │
+│  • Emotion Detection (FER + OpenCV + MediaPipe)           │
+│  • Transcription (Web Speech API Integration)             │
+│  • Summary Generation (Gemini/Groq AI)                    │
+│  • RAG Assistant (Vector Search + LLM)                    │
+│  • Authentication (JWT)                                   │
+└──────────────────────────────────────────────────────────┘
+                          ↕
+┌────────────────────┬─────────────────────────────────────┐
+│   MongoDB Atlas    │         ChromaDB (Local)            │
+│   (Cloud NoSQL)    │       (Vector Database)             │
+│                    │                                     │
+│  Collections:      │  Embeddings:                        │
+│  • users           │  • PDF documents (10,872 chunks)    │
+│  • clients         │  • Session notes (10 docs)          │
+│  • sessions        │  • Client records (8 docs)          │
+│  • notes           │  Total: 10,890 indexed documents    │
+│  • ai_insights     │                                     │
+└────────────────────┴─────────────────────────────────────┘
+```
+
+---
+
+## 🛠️ Tech Stackgnitive patterns
+    - Track progress
+    ↓
+Generate Structured Clinical Notes:
+    - Initial Assessment / Progress Updates
+    - Clinical Observations
+    - Cognitive Pattern Analysis
+    - Therapeutic Interventions
+    - Action Items & Homework
+    ↓
+Store in MongoDB + Index in Vector DB
+    ↓
+Available for RAG Assistant Queries
+```
+
+### **4. RAG Assistant Query Flow**
+```
+Therapist Query
+    ↓
+Generate Query Embedding (Gemini)
+    ↓
+Semantic Search in ChromaDB (10,890 documents)
+    ↓
+Retrieve Top-K Relevant Chunks:
+    - Previous session notes
+    - PDF therapy resources
+    - Client records
+    ↓
+Re-rank by Relevance
+    ↓
+LLM Generation (Gemini/Groq) with Retrieved Context
+    ↓
+Return Grounded Response with Sources
+```
+
+### **5. Emotion Detection Pipeline**
+```
+Video Frame (30 FPS)
+    ↓
+Sample at 2 FPS (configurable)
+    ↓
+Convert to grayscale (OpenCV)
+    ↓
+Face Detection (MediaPipe FaceMesh)
+    ↓
+Face Landmarks Extraction
+    ↓
+Emotion Classification (FER Model):
+    - Happy, Sad, Angry, Surprise
+    - Fear, Disgust, Neutral
+    ↓
+Confidence Scores (0-1)
+    ↓
+Dominant Emotion Selection
+    ↓
+Real-time Broadcast (Socket.io)
+    ↓
+Store Emotion Timeline in MongoDB
+    ↓
+Generate Emotion Summary & Visualization
+```
+
+---
+
 ## 🏗️ Architecture
 
 ```
@@ -122,282 +262,9 @@ TherapyHub is an advanced therapy practice management system designed to help me
                               │
                     ┌─────────┴─────────┐
                     │                   │
-        ┌───────────▼─────────┐  ┌─────▼──────────┐
-        │   MongoDB Atlas     │  │   ChromaDB     │
-        │   (Sessions, Notes, │  │   (Vector      │
-        │   Clients, Users)   │  │   Embeddings)  │
-        └─────────────────────┘  └────────────────┘
-```
-
 ---
 
-## 🛠️ Tech Stack
-
-### **Frontend**
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **TailwindCSS** - Styling
-- **shadcn/ui** - Component library
-- **Socket.io Client** - Real-time communication
-- **Lucide React** - Icons
-- **React Router** - Navigation
-
-### **Backend**
-- **Flask 3.0** - Web framework
-- **Python 3.12** - Programming language
-- **Flask-SocketIO** - WebSocket support
-- **Flask-JWT-Extended** - Authentication
-- **PyMongo** - MongoDB driver
-- **Flask-CORS** - Cross-origin support
-
-### **AI & ML**
-- **Google Gemini API** - Text generation & embeddings
-- **Groq API** - Fast LLM inference (fallback)
-- **TensorFlow 2.17** - Deep learning framework
-- **OpenCV** - Computer vision
-- **MediaPipe** - Face detection
-- **FER (Facial Expression Recognition)** - Emotion detection
-- **ChromaDB** - Vector database
-
-### **Database**
-- **MongoDB Atlas** - Cloud NoSQL database
-- **ChromaDB** - Vector store for embeddings
-
----
-
-## 🚀 Setup Instructions
-
-### **Prerequisites**
-- Python 3.12+
-- Node.js 18+
-- MongoDB Atlas account (or local MongoDB)
-- Google Gemini API key
-- Groq API key
-
-### **1. Clone Repository**
-```bash
-git clone <repository-url>
-cd Assistant-For-Therapist-
-```
-
-### **2. Backend Setup**
-
-```bash
-cd Backend
-
-# Create virtual environment (recommended)
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Create .env file
-cp .env.example .env
-# Edit .env with your configuration (see Environment Variables section)
-
-# Initialize RAG system (index PDFs, notes, clients)
-python initialize_rag.py
-
-# Run the Flask server
-python app.py
-```
-
-The backend will start on `http://localhost:5000`
-
-### **3. Frontend Setup**
-
-```bash
-cd Frontend
-
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-```
-
-The frontend will start on `http://localhost:5173`
-
----
-
-## 🔑 Environment Variables
-
-### **Backend (.env)**
-
-Create a `.env` file in the `Backend` directory:
-
-```env
-# Flask Configuration
-FLASK_ENV=development
-SECRET_KEY=your-secret-key-here
-JWT_SECRET_KEY=your-jwt-secret-key-here
-
-# MongoDB Configuration
-MONGO_URI=mongodb+srv://username:password@cluster.mongodb.net/therapy_assistant?retryWrites=true&w=majority
-
-# CORS Configuration
-CORS_ORIGINS=http://localhost:5173,http://localhost:3000
-
-# AI API Keys
-GEMINI_API_KEY=your-gemini-api-key-here
-GROQ_API_KEY=your-groq-api-key-here
-
-# AI Provider (gemini or groq)
-AI_PROVIDER=gemini
-
-# Optional: OpenAI (for advanced features)
-OPENAI_API_KEY=your-openai-key-here
-```
-
-### **Get API Keys:**
-
-1. **Gemini API** (Free): https://makersuite.google.com/app/apikey
-   - Free tier: 15 RPM, 1500 RPD
-   
-2. **Groq API** (Free): https://console.groq.com/keys
-   - Free tier: 30 RPM, extremely fast inference
-
-3. **MongoDB Atlas** (Free): https://www.mongodb.com/cloud/atlas
-   - Free tier: 512MB storage
-
----
-
-## 📖 Usage Guide
-
-### **1. Register & Login**
-
-1. Navigate to `http://localhost:5173`
-2. Click "Register" and create a therapist account
-3. Login with your credentials
-
-### **2. Add Clients**
-
-1. Go to "Clients" in the sidebar
-2. Click "Add New Client"
-3. Fill in client details (name, email, phone, diagnosis)
-4. Save client profile
-
-### **3. Schedule Sessions**
-
-1. Go to "Sessions" in the sidebar
-2. Click "Schedule New Session"
-3. Select client, date, time, and session type
-4. Click "Schedule Session"
-
-### **4. Conduct Video Session**
-
-1. Click "Start Video" on a scheduled session
-2. Allow camera and microphone permissions
-3. The system will automatically:
-   - Detect client emotions in real-time
-   - Transcribe conversation (bilingual support)
-   - Track emotion patterns
-4. Click "End Session" when finished
-
-### **5. Review Generated Notes**
-
-1. After ending a session, navigate to "Notes"
-2. View AI-generated session notes with:
-   - Initial assessment or progress updates
-   - Clinical observations
-   - Cognitive patterns identified
-   - Therapeutic interventions
-   - Homework assignments
-3. Edit notes if needed
-4. Export as PDF
-
-### **6. Use RAG Assistant**
-
-1. Go to "Assistant" in the sidebar
-2. First-time setup: Click "Initialize System" to index data
-3. Ask questions like:
-   - "What are the recent notes for John Doe?"
-   - "Summarize client progress this month"
-   - "What techniques work for anxiety treatment?"
-   - "Show clients with depression"
-4. Assistant will retrieve relevant context and provide answers
-
-### **7. Add Therapy Resources**
-
-1. Place PDF files (therapy guides, research papers) in `Backend/docs/` folder
-2. Go to Assistant page → "Manage Data" tab
-3. Click "Upload PDF" or "Initialize System" to re-index
-4. PDFs are now searchable through the assistant
-
----
-
-## 📚 API Documentation
-
-### **Authentication**
-
-#### Register
-```http
-POST /api/auth/register
-Content-Type: application/json
-
-{
-  "email": "therapist@example.com",
-  "username": "dr_smith",
-  "password": "securepassword",
-  "full_name": "Dr. John Smith",
-  "specialization": "Clinical Psychology"
-}
-```
-
-#### Login
-```http
-POST /api/auth/login
-Content-Type: application/json
-
-{
-  "email": "therapist@example.com",
-  "password": "securepassword"
-}
-```
-
-### **Client Management**
-
-#### Get All Clients
-```http
-GET /api/clients/
-Authorization: Bearer <token>
-```
-
-#### Create Client
-```http
-POST /api/clients/
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "name": "Jane Doe",
-  "email": "jane@example.com",
-  "phone": "+1234567890",
-  "date_of_birth": "1990-01-01",
-  "diagnosis": "Generalized Anxiety Disorder"
-}
-```
-
-### **Session Management**
-
-#### Create Session
-```http
-POST /api/sessions/
-Authorization: Bearer <token>
-Content-Type: application/json
-
-{
-  "client_id": "507f1f77bcf86cd799439011",
-  "scheduled_time": "2025-12-10T10:00:00Z",
-  "session_type": "individual",
-  "duration": 60
-}
-```
-
-#### Start Video Session
-```http
+## 🎨 Features in Detail
 POST /api/webrtc/session/<session_id>/start
 Authorization: Bearer <token>
 ```
@@ -699,3 +566,4 @@ For questions or issues:
 ---
 
 **Built with ❤️ for mental health professionals**
+---
