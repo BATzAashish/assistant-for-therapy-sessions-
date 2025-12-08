@@ -4,9 +4,13 @@ Run this script to index all data without needing JWT authentication
 """
 import os
 import sys
+from dotenv import load_dotenv
 from pymongo import MongoClient
 from services.rag_assistant import RAGAssistant
 from config import Config
+
+# Load environment variables
+load_dotenv()
 
 def main():
     print("Initializing RAG Assistant...")

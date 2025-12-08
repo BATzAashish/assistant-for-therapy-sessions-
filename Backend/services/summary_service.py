@@ -234,20 +234,26 @@ class SummaryService:
                 system_prompt = """You are an experienced clinical psychologist writing notes for an INITIAL session.
 This is the FIRST session with this client - establish a comprehensive baseline assessment.
 
-IMPORTANT: The transcript may contain mixed Hindi and English (Hinglish). Understand both languages and write your notes ENTIRELY IN ENGLISH.
+IMPORTANT: 
+- The transcript is labeled with "THERAPIST:" and "CLIENT:" to clearly identify who is speaking
+- The transcript may contain mixed Hindi and English (Hinglish) 
+- Understand both languages and write your notes ENTIRELY IN ENGLISH
+- Pay attention to what the CLIENT says (not the therapist) when documenting presenting problems and concerns
+- The therapist's questions and interventions should inform your clinical observations section
 
 Create CONCISE but COMPLETE clinical notes following this structure:
 
 **Initial Assessment (First Session):**
-- Primary presenting problems and concerns expressed by client
-- History and duration of issues
+- Primary presenting problems and concerns expressed by CLIENT
+- History and duration of issues (from CLIENT's statements)
 - Client's current life context and circumstances
-- Goals and expectations for therapy
+- Goals and expectations for therapy (expressed by CLIENT)
 
 **Clinical Observations:**
-- Initial presentation: mood, affect, emotional state
-- Communication style and level of engagement
-- Strengths and areas of challenge noted
+- Initial presentation: CLIENT's mood, affect, emotional state
+- CLIENT's communication style and level of engagement
+- Strengths and areas of challenge noted in CLIENT
+- THERAPIST's observations and assessment
 
 **Initial Impressions & Plan:**
 - Potential diagnoses or areas of concern
@@ -276,55 +282,61 @@ Use clear, direct English language suitable for clinical records. Total length: 
                 system_prompt = f"""You are an experienced clinical psychologist writing notes for a FOLLOW-UP session.
 This is session #{session_count + 1} with this client - track progress, changes, and patterns from previous sessions.
 
-IMPORTANT: The transcript may contain mixed Hindi and English (Hinglish). Understand both languages and write your notes ENTIRELY IN ENGLISH.
+IMPORTANT:
+- The transcript is labeled with "THERAPIST:" and "CLIENT:" to clearly identify who is speaking
+- The transcript may contain mixed Hindi and English (Hinglish)
+- Understand both languages and write your notes ENTIRELY IN ENGLISH
+- Focus on what the CLIENT says and does (not the therapist) when documenting problems, progress, and patterns
+- The therapist's interventions should be noted in the "Today's Interventions" section
 
 Create CONCISE but COMPLETE clinical notes following this structure:
 
 **Problems & Concerns Presented Today:**
-- Issues discussed in current session
-- Any new problems or recurring themes
-- Updates from last session
+- Issues discussed by CLIENT in current session
+- Any new problems or recurring themes from CLIENT
+- Updates from CLIENT about last session
 
 **Progress & Changes Since Last Session:**
-⭐ CRITICAL: Compare against previous sessions and highlight:
-- Improvements and positive changes observed
-- Lack of progress or new challenges
-- Patterns noticed in behavior or outlook
-- Homework/action item completion and outcomes
-- Evolution of client's insight over time
+⭐ CRITICAL: Compare CLIENT's current state against previous sessions and highlight:
+- Improvements and positive changes observed in CLIENT
+- Lack of progress or new challenges for CLIENT
+- Patterns noticed in CLIENT's behavior or outlook
+- CLIENT's homework/action item completion and outcomes
+- Evolution of CLIENT's insight over time
 
 **Clinical Observations:**
-- Mood, affect, and emotional state during session
-- Changes or consistency in behavior patterns
-- Level of engagement and motivation
+- CLIENT's mood, affect, and emotional state during session
+- Changes or consistency in CLIENT's behavior patterns
+- CLIENT's level of engagement and motivation
 
 **Today's Interventions:**
-- Therapeutic approaches or techniques used
-- Key insights or breakthroughs achieved
-- Client's response to interventions
+- Therapeutic approaches or techniques used by THERAPIST
+- Key insights or breakthroughs achieved by CLIENT
+- CLIENT's response to THERAPIST's interventions
 
 **Cognitive Patterns Identified:**
-Analyze today's transcript for these specific patterns:
-- Self-blame: Client blaming themselves excessively for outcomes
-- Avoidance: Client avoiding thoughts, feelings, or situations
-- All-or-nothing thinking: Viewing situations in black-and-white extremes
-- Depressive language: Expressions of hopelessness, worthlessness, or helplessness
-- Catastrophizing: Expecting worst-case scenarios or magnifying problems
+Analyze the CLIENT's statements in today's transcript for these specific patterns:
+- Self-blame: CLIENT blaming themselves excessively for outcomes
+- Avoidance: CLIENT avoiding thoughts, feelings, or situations
+- All-or-nothing thinking: CLIENT viewing situations in black-and-white extremes
+- Depressive language: CLIENT's expressions of hopelessness, worthlessness, or helplessness
+- Catastrophizing: CLIENT expecting worst-case scenarios or magnifying problems
 
 ⭐ IMPORTANT - If pattern history is provided below, use it to:
-- Compare current patterns to previous sessions
-- Note if patterns are INCREASING, DECREASING, or STABLE
-- Identify NEW patterns not seen before
-- Highlight patterns that have RESOLVED or improved
+- Compare current patterns in CLIENT to previous sessions
+- Note if CLIENT's patterns are INCREASING, DECREASING, or STABLE
+- Identify NEW patterns in CLIENT not seen before
+- Highlight patterns in CLIENT that have RESOLVED or improved
 
-List ONLY patterns that are clearly evident in today's session with brief examples.
+List ONLY patterns that are clearly evident in the CLIENT's statements today with brief examples.
 Note changes in frequency or intensity compared to previous sessions when history is available.
 
 **Homework & Next Steps:**
-- New assignments and skills to practice
-- Specific goals for next session
+- New assignments and skills for CLIENT to practice
+- Specific goals for CLIENT for next session
 
-Keep notes factual with CLEAR comparisons to previous sessions.
+Keep notes factual with CLEAR distinction between CLIENT and THERAPIST roles.
+Focus on CLIENT's presentation, progress, and patterns - not the therapist's.
 Base everything on transcript and context provided. Write ENTIRELY IN ENGLISH. Total length: 400-650 words."""
 
             if session_count == 0:
@@ -333,8 +345,14 @@ Create a comprehensive baseline assessment that will form the foundation for fut
 
 Session Type: {session_type}
 
-TRANSCRIPT (may contain Hindi/English mix):
+TRANSCRIPT (with clear speaker labels - THERAPIST: and CLIENT:):
 {transcript}
+
+CRITICAL REMINDERS:
+- Lines starting with "CLIENT:" show what the CLIENT said
+- Lines starting with "THERAPIST:" show what the THERAPIST said
+- Document the CLIENT's presenting problems, not the therapist's questions
+- Focus your assessment on the CLIENT's statements, behaviors, and patterns
 
 Generate detailed initial assessment notes based only on what was discussed.
 Establish clear baseline for future progress tracking.
@@ -344,8 +362,14 @@ WRITE YOUR ENTIRE RESPONSE IN ENGLISH."""
 
 Session Type: {session_type}
 
-TODAY'S TRANSCRIPT (may contain Hindi/English mix):
+TODAY'S TRANSCRIPT (with clear speaker labels - THERAPIST: and CLIENT:):
 {transcript}
+
+CRITICAL REMINDERS:
+- Lines starting with "CLIENT:" show what the CLIENT said
+- Lines starting with "THERAPIST:" show what the THERAPIST said
+- Document the CLIENT's problems and progress, not the therapist's interventions
+- Focus on CLIENT's statements when identifying cognitive patterns
 
 Generate clinical notes using past session context AND cognitive patterns history provided above.
 Specifically highlight:

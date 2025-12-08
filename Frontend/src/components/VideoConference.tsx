@@ -488,6 +488,7 @@ const VideoConference = ({
     const recognition = new SpeechRecognition();
     recognition.continuous = true;
     recognition.interimResults = true;
+    recognition.maxAlternatives = 1;
     
     // Use English as primary language - Chrome will auto-detect Hindi/English mix
     // Setting to 'en-IN' (Indian English) helps browser understand Hinglish better
@@ -540,15 +541,24 @@ const VideoConference = ({
       console.error(`[Speech Recognition] Error (${recognition.lang}):`, event.error, event);
       
       if (event.error === 'no-speech') {
-        // Restart if no speech detected
-        console.log("[Speech Recognition] No speech detected, restarting...");
-        setTimeout(() => {
-          if (recognitionRef.current) {
-            recognitionRef.current.start();
-          }
-        }, 1000);
+        // Restart if no speech detected - this is normal, browser timed out waiting for speech
+        console.log("[Speech Recognition] No speech detected (timeout), restarting...");
+        // Don't show error to user, this is normal behavior
+      } else if (event.error === 'audio-capture') {
+        console.error("[Speech Recognition] No microphone detected or microphone is muted");
+        toast({
+          title: "Microphone Issue",
+          description: "Please check that your microphone is connected and unmuted.",
+          variant: "destructive",
+        });
+        setIsTranscribing(false);
       } else if (event.error === 'not-allowed') {
         console.error("[Speech Recognition] Microphone permission denied");
+        toast({
+          title: "Microphone Permission Denied",
+          description: "Please allow microphone access to use transcription.",
+          variant: "destructive",
+        });
         setIsTranscribing(false);
       } else if (event.error === 'language-not-supported') {
         console.error(`[Speech Recognition] Language ${recognition.lang} not supported by browser`);

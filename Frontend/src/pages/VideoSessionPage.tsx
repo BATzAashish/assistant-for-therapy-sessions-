@@ -108,18 +108,26 @@ const VideoSessionPage = () => {
   // Otherwise, they are "client" (the person being analyzed)
   // Check both _id and id fields (user object might use either)
   const userId = user?._id || user?.id;
-  const isSessionTherapist = session?.therapist_id === userId;
+  const sessionTherapistId = session?.therapist_id || session?.therapistId;
+  
+  // Convert both to strings for comparison (in case one is ObjectId)
+  const userIdStr = String(userId);
+  const therapistIdStr = String(sessionTherapistId);
+  
+  const isSessionTherapist = userIdStr === therapistIdStr;
   const userType = isSessionTherapist ? "therapist" : "client";
-  const userName = user?.full_name || user?.username || "User";
+  const userName = user?.full_name || user?.fullName || user?.username || "User";
   
   console.log('[VideoSessionPage] User type determination:', {
     userId: userId,
-    userIdField: user?._id,
-    userIdAlt: user?.id,
-    sessionTherapistId: session?.therapist_id,
+    userIdStr: userIdStr,
+    sessionTherapistId: sessionTherapistId,
+    therapistIdStr: therapistIdStr,
     isSessionTherapist,
     userType,
-    fullUserObject: user
+    userName,
+    fullUserObject: user,
+    sessionObject: session
   });
   
   return (

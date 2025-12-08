@@ -104,24 +104,41 @@ class TranscriptionService:
     
     def format_transcript(self, segments: List[Dict]) -> str:
         """
-        Format transcript segments into readable text with timestamps
+        Format transcript segments into readable text with timestamps and speaker labels
         
         Args:
-            segments: List of transcript segments with timestamps
+            segments: List of transcript segments with timestamps and speaker info
             
         Returns:
-            Formatted transcript string
+            Formatted transcript string with clear speaker labels
         """
         formatted = []
         
         for segment in segments:
             if isinstance(segment, dict):
-                timestamp = segment.get('start', 0)
+                timestamp = segment.get('timestamp', segment.get('start', 0))
                 text = segment.get('text', '').strip()
+                speaker = segment.get('speaker', 'unknown')
                 
-                minutes = int(timestamp // 60)
-                seconds = int(timestamp % 60)
-                formatted.append(f"[{minutes:02d}:{seconds:02d}] {text}")
+                # Format speaker label clearly
+                if speaker.lower() == 'therapist':
+                    speaker_label = "THERAPIST"
+                elif speaker.lower() == 'client':
+                    speaker_label = "CLIENT"
+                else:
+                    speaker_label = speaker.upper()
+                
+                # Format timestamp
+                if isinstance(timestamp, str):
+                    # ISO format timestamp - just use as is
+                    time_str = timestamp.split('T')[1][:8] if 'T' in timestamp else timestamp[:8]
+                else:
+                    # Numeric timestamp in seconds
+                    minutes = int(timestamp // 60)
+                    seconds = int(timestamp % 60)
+                    time_str = f"{minutes:02d}:{seconds:02d}"
+                
+                formatted.append(f"[{time_str}] {speaker_label}: {text}")
             else:
                 # Handle different segment formats
                 formatted.append(str(segment))

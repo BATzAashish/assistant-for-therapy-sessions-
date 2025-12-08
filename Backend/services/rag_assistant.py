@@ -23,7 +23,7 @@ class RAGAssistant:
         api_key = os.getenv('GEMINI_API_KEY')
         if api_key:
             genai.configure(api_key=api_key)
-            self.model = genai.GenerativeModel('gemini-1.5-flash')  # Updated model name
+            self.model = genai.GenerativeModel('gemini-2.0-flash-exp')  # Updated model name
         else:
             print("Warning: GEMINI_API_KEY not found. Generation will fail.")
             self.model = None
@@ -247,7 +247,7 @@ ANSWER (Be specific, actionable, and practical):"""
         """
         Index all notes for a therapist into the vector store
         """
-        if not self.db:
+        if self.db is None:
             return {"success": False, "message": "Database not available"}
         
         try:
@@ -334,9 +334,9 @@ Content:
     
     def index_clients(self, therapist_id: str) -> Dict[str, any]:
         """
-        Index all client records for a therapist into the vector store
+        Index all clients for a therapist into the vector store
         """
-        if not self.db:
+        if self.db is None:
             return {"success": False, "message": "Database not available"}
         
         try:

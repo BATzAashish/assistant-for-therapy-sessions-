@@ -135,9 +135,21 @@ class VectorStore:
             documents_text = []
             
             for i, doc in enumerate(batch_docs):
-                # Generate unique ID
+                # Generate unique ID based on type and metadata
                 source = doc['metadata'].get('source', 'unknown')
-                doc_id = f"{source}_{doc['metadata'].get('chunk_index', start_idx + i)}_{batch_idx}"
+                doc_type = doc['metadata'].get('type', 'unknown')
+                chunk_index = doc['metadata'].get('chunk_index', start_idx + i)
+                
+                # Include type-specific IDs for uniqueness
+                if doc_type == 'note':
+                    note_id = doc['metadata'].get('note_id', 'unknown')
+                    doc_id = f"note_{note_id}_{chunk_index}"
+                elif doc_type == 'client':
+                    client_id = doc['metadata'].get('client_id', 'unknown')
+                    doc_id = f"client_{client_id}_{chunk_index}"
+                else:  # pdf or other
+                    doc_id = f"{source}_{chunk_index}_{batch_idx}"
+                    
                 ids.append(doc_id)
                 
                 # Generate embedding

@@ -66,6 +66,7 @@ def login():
         password = data.get('password')
         
         print(f"\n[LOGIN] Attempting login for: {identifier}")
+        print(f"[LOGIN] Database object: {current_app.db}")
         
         if not identifier or not password:
             return jsonify({'error': 'Username/email and password are required'}), 400
@@ -73,9 +74,14 @@ def login():
         user_model = User(current_app.db)
         
         # Find user by email or username
+        print(f"[LOGIN] Searching by email: {identifier}")
         user = user_model.find_by_email(identifier)
+        print(f"[LOGIN] Email search result: {user is not None}")
+        
         if not user:
+            print(f"[LOGIN] Searching by username: {identifier}")
             user = user_model.find_by_username(identifier)
+            print(f"[LOGIN] Username search result: {user is not None}")
         
         if not user:
             print(f"[LOGIN] User not found: {identifier}")
